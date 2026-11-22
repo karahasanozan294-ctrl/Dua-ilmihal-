@@ -30,6 +30,37 @@ interface MihrabNativePlugin {
 const MihrabNativeNotifications =
   registerPlugin<MihrabNativePlugin>('MihrabNotifications');
 
+declare global {
+  interface Window {
+    mihrabDesktop?: {
+      isDesktop: boolean;
+      platform: string;
+      updateTraySummary: (summary: string) => void;
+      showNotification: (title: string, body: string) => void;
+    };
+  }
+}
+
+export function isDesktopWindows(): boolean {
+  try {
+    return Boolean(
+      typeof window !== 'undefined' && window.mihrabDesktop?.isDesktop
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function updateWindowsTraySummary(summary: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.mihrabDesktop?.isDesktop) {
+      window.mihrabDesktop.updateTraySummary(summary);
+    }
+  } catch {
+    // Ignore bridge errors
+  }
+}
+
 export function isNativeAndroid(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -39,6 +70,9 @@ export function isNativeAndroid(): boolean {
 }
 
 export function getNotificationPermissionState(): NotificationPermissionState {
+  if (isDesktopWindows()) {
+    return 'granted';
+  }
   if (isNativeAndroid()) {
     return 'default';
   }
@@ -49,6 +83,9 @@ export function getNotificationPermissionState(): NotificationPermissionState {
 }
 
 export async function getUnifiedNotificationPermissionState(): Promise<NotificationPermissionState> {
+  if (isDesktopWindows()) {
+    return 'granted';
+  }
   if (isNativeAndroid()) {
     try {
       const res = await MihrabNativeNotifications.getPermissionStatus();
@@ -61,6 +98,9 @@ export async function getUnifiedNotificationPermissionState(): Promise<Notificat
 }
 
 export async function requestBrowserNotificationPermission(): Promise<NotificationPermissionState> {
+  if (isDesktopWindows()) {
+    return 'granted';
+  }
   if (isNativeAndroid()) {
     try {
       const res = await MihrabNativeNotifications.requestPermission();
@@ -122,6 +162,11 @@ export function dispatchBrowserNotification(
   body: string,
   options?: { tag?: string; silent?: boolean; renotify?: boolean }
 ): boolean {
+  if (isDesktopWindows()) {
+    window.mihrabDesktop?.showNotification(title, body);
+    return true;
+  }
+
   if (isNativeAndroid()) {
     MihrabNativeNotifications.sendAlertNotification({ title, body }).catch(
       () => undefined

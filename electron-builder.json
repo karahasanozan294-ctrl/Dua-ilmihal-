@@ -1,0 +1,28 @@
+{
+  "appId": "com.mihrab.namazvakti",
+  "productName": "Mihrab",
+  "copyright": "Mihrab Namaz Vakitleri",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "!node_modules/**/*"
+  ],
+  "extraMetadata": {
+    "main": "electron/main.cjs"
+  },
+  "win": {
+    "icon": "electron/icon.ico",
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "portable": {
+    "artifactName": "Mihrab-Windows-Portable.exe"
+  }
+}

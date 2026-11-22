@@ -35,6 +35,7 @@ import {
   playZikirTapSound,
   requestBrowserNotificationPermission,
   syncNativeAndroidPrayerBar,
+  updateWindowsTraySummary,
 } from './utils/notifications';
 import {
   calculateDailySchedule,
@@ -317,10 +318,12 @@ export default function App() {
     permissionState,
   ]);
 
-  // Reflect next prayer countdown in browser tab title
+  // Reflect next prayer countdown in browser tab title and Windows tray tooltip
   useEffect(() => {
-    document.title = `${nextStatus.nextPrayer.label} ${nextStatus.nextPrayer.formattedTime} (${nextStatus.countdownFormatted}) · Mihrab`;
-  }, [nextStatus]);
+    const label = `${nextStatus.nextPrayer.label} ${nextStatus.nextPrayer.formattedTime} (${nextStatus.countdownFormatted}) · Mihrab`;
+    document.title = label;
+    updateWindowsTraySummary(`Mihrab · ${location.name} · ${label.replace(' · Mihrab', '')}`);
+  }, [nextStatus, location.name]);
 
   // Check and dispatch scheduled prayer notifications
   useEffect(() => {
