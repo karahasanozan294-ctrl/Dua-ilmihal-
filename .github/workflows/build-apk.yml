@@ -14,29 +14,26 @@ jobs:
 
     steps:
       - name: Kaynak kodları indir
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Node.js 22 kur
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       - name: Java 21 (JDK) kur
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
-
-      - name: Android SDK Platform 36 ve Build Tools yükle
-        run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Android SDK (Platform 36 ve Build Tools) kur
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Bağımlılıkları yükle
-        run: npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Web uygulamasını derle
         run: npm run build
@@ -53,10 +50,10 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: APK dosyasını GitHub Artifact olarak yükle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Mihrab-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
