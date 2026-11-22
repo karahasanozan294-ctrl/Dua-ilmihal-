@@ -12,7 +12,10 @@ import {
   NotificationSettings,
   PrayerKey,
 } from '../types/prayer';
-import { NotificationPermissionState } from '../utils/notifications';
+import {
+  isNativeAndroid,
+  NotificationPermissionState,
+} from '../utils/notifications';
 import { formatTimeInZone, NextPrayerStatus } from '../utils/prayerCalculator';
 
 interface NotificationManagerProps {
@@ -55,14 +58,21 @@ export function NotificationManager({
     });
   };
 
-  const permissionLabel =
-    permissionState === 'granted'
-      ? 'Tarayıcı bildirimleri onaylı'
+  const nativeAndroid = isNativeAndroid();
+
+  const permissionLabel = nativeAndroid
+    ? permissionState === 'granted'
+      ? 'Android bildirim izni aktif · Vakit çubuğu açık'
       : permissionState === 'denied'
-      ? 'Tarayıcı bildirimleri engelli (uygulama içi bildirimler aktif)'
-      : permissionState === 'unsupported'
-      ? 'Bu tarayıcı yerel bildirimleri desteklemiyor (uygulama içi bildirimler aktif)'
-      : 'Bildirim izni bekleniyor';
+      ? 'Android bildirim izni kapalı (Uygulama ayarlarından açabilirsiniz)'
+      : 'Bildirim çubuğunda vakitleri göstermek için izin bekleniyor'
+    : permissionState === 'granted'
+    ? 'Tarayıcı bildirimleri onaylı'
+    : permissionState === 'denied'
+    ? 'Tarayıcı bildirimleri engelli (uygulama içi bildirimler aktif)'
+    : permissionState === 'unsupported'
+    ? 'Bu tarayıcı yerel bildirimleri desteklemiyor (uygulama içi bildirimler aktif)'
+    : 'Bildirim izni bekleniyor';
 
   return (
     <section className="space-y-6">
@@ -196,9 +206,13 @@ export function NotificationManager({
               <div className="flex items-center gap-2.5">
                 <Bell className="h-4 w-4 text-[#0F6E56] dark:text-[#34D399]" />
                 <div>
-                  <div className="text-sm font-medium">Üst Bildirim Şeridini Sabitle</div>
+                  <div className="text-sm font-medium">
+                    Bildirim Çubuğunda Vakitleri Göster
+                  </div>
                   <div className="text-xs text-[#666C68] dark:text-[#8E9BA4]">
-                    Gezinirken sıradaki vakti ve kalan süreyi üstte tutar
+                    {nativeAndroid
+                      ? 'Telefonun bildirim çubuğunda günlük 6 vakti ve geri sayımı sabit gösterir'
+                      : 'Gezinirken sıradaki vakti ve kalan süreyi üst şeritte sabit tutar'}
                   </div>
                 </div>
               </div>

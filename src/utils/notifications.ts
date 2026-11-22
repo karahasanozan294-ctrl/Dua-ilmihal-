@@ -1,17 +1,74 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { DailyPrayerSchedule, NotificationSettings } from '../types/prayer';
+
 export type NotificationPermissionState =
   | 'granted'
   | 'denied'
   | 'default'
   | 'unsupported';
 
+interface MihrabNativePlugin {
+  getPermissionStatus(): Promise<{ state: NotificationPermissionState }>;
+  requestPermission(): Promise<{ state: NotificationPermissionState }>;
+  syncPrayerSchedule(options: {
+    persistentEnabled: boolean;
+    alertsEnabled: boolean;
+    soundEnabled: boolean;
+    leadMinutes: number;
+    locationName: string;
+    dateLabel: string;
+    hijriLabel: string;
+    prayersJson: string;
+    enabledPrayersJson: string;
+  }): Promise<{ applied: boolean; permission: NotificationPermissionState }>;
+  sendAlertNotification(options: {
+    title: string;
+    body: string;
+  }): Promise<{ sent: boolean }>;
+}
+
+const MihrabNativeNotifications =
+  registerPlugin<MihrabNativePlugin>('MihrabNotifications');
+
+export function isNativeAndroid(): boolean {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  } catch {
+    return false;
+  }
+}
+
 export function getNotificationPermissionState(): NotificationPermissionState {
+  if (isNativeAndroid()) {
+    return 'default';
+  }
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return 'unsupported';
   }
   return Notification.permission;
 }
 
+export async function getUnifiedNotificationPermissionState(): Promise<NotificationPermissionState> {
+  if (isNativeAndroid()) {
+    try {
+      const res = await MihrabNativeNotifications.getPermissionStatus();
+      return res.state ?? 'default';
+    } catch {
+      return 'default';
+    }
+  }
+  return getNotificationPermissionState();
+}
+
 export async function requestBrowserNotificationPermission(): Promise<NotificationPermissionState> {
+  if (isNativeAndroid()) {
+    try {
+      const res = await MihrabNativeNotifications.requestPermission();
+      return res.state ?? 'denied';
+    } catch {
+      return 'denied';
+    }
+  }
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return 'unsupported';
   }
@@ -23,11 +80,55 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
   }
 }
 
+export async function syncNativeAndroidPrayerBar(params: {
+  settings: NotificationSettings;
+  locationName: string;
+  dateLabel: string;
+  hijriLabel: string;
+  schedules: DailyPrayerSchedule[];
+}): Promise<NotificationPermissionState | null> {
+  if (!isNativeAndroid()) return null;
+
+  try {
+    const flatPrayers = params.schedules.flatMap((daySchedule) =>
+      daySchedule.prayers.map((p) => ({
+        key: p.key,
+        label: p.label,
+        time: p.formattedTime,
+        epochMs: p.date.getTime(),
+      }))
+    );
+
+    const res = await MihrabNativeNotifications.syncPrayerSchedule({
+      persistentEnabled: params.settings.persistentSummary,
+      alertsEnabled: params.settings.enabled,
+      soundEnabled: params.settings.soundEnabled,
+      leadMinutes: params.settings.leadMinutes,
+      locationName: params.locationName,
+      dateLabel: params.dateLabel,
+      hijriLabel: params.hijriLabel,
+      prayersJson: JSON.stringify(flatPrayers),
+      enabledPrayersJson: JSON.stringify(params.settings.prayers),
+    });
+
+    return res.permission;
+  } catch {
+    return null;
+  }
+}
+
 export function dispatchBrowserNotification(
   title: string,
   body: string,
   options?: { tag?: string; silent?: boolean; renotify?: boolean }
 ): boolean {
+  if (isNativeAndroid()) {
+    MihrabNativeNotifications.sendAlertNotification({ title, body }).catch(
+      () => undefined
+    );
+    return true;
+  }
+
   if (
     typeof window === 'undefined' ||
     !('Notification' in window) ||
@@ -132,4 +233,3 @@ export function playZikirTapSound(isTargetReached = false): void {
     // Ignore audio errors gracefully
   }
 }
-

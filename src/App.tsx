@@ -16,6 +16,7 @@ import { PdfBookReader } from './components/PdfBookReader';
 import { RiyazusSalihinReader } from './components/RiyazusSalihinReader';
 import { Zikirmatik, ZikirmatikQuickCard } from './components/Zikirmatik';
 import { TURKEY_PROVINCES } from './data/cities';
+import { getHijriParts } from './data/islamicCalendar';
 import {
   CalculationMethodId,
   InAppNotification,
@@ -27,10 +28,13 @@ import { ZikirItem, ZikirState } from './types/zikir';
 import {
   dispatchBrowserNotification,
   getNotificationPermissionState,
+  getUnifiedNotificationPermissionState,
+  isNativeAndroid,
   NotificationPermissionState,
   playGentleAdhanChime,
   playZikirTapSound,
   requestBrowserNotificationPermission,
+  syncNativeAndroidPrayerBar,
 } from './utils/notifications';
 import {
   calculateDailySchedule,
@@ -240,15 +244,78 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+
   const schedule = useMemo(
     () => calculateDailySchedule(location, now, methodId, madhabId),
-    [location, now, methodId, madhabId]
+    [location, todayKey, methodId, madhabId]
   );
+
+  const tomorrowSchedule = useMemo(() => {
+    const tomorrow = new Date(now.getTime() + 86_400_000);
+    return calculateDailySchedule(location, tomorrow, methodId, madhabId);
+  }, [location, todayKey, methodId, madhabId]);
 
   const nextStatus = useMemo(
     () => getNextPrayerStatus(location, now, methodId, madhabId),
     [location, now, methodId, madhabId]
   );
+
+  // Sync native Android notification permission on startup
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const current = await getUnifiedNotificationPermissionState();
+      if (!active) return;
+      setPermissionState(current);
+
+      if (isNativeAndroid() && current === 'default') {
+        const promptedKey = 'mihrab_native_perm_prompted';
+        const alreadyPrompted = window.localStorage.getItem(promptedKey);
+        if (!alreadyPrompted) {
+          window.localStorage.setItem(promptedKey, '1');
+          const nextPerm = await requestBrowserNotificationPermission();
+          if (active) setPermissionState(nextPerm);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Push 2-day prayer schedule to native Android notification shade & alarms
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    const refDate = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      12,
+      0,
+      0
+    );
+    const hijri = getHijriParts(refDate);
+    const hijriLabel = `${hijri.day} ${hijri.monthNameTr} ${hijri.year}`;
+    const dateLabel = new Intl.DateTimeFormat('tr-TR', {
+      day: 'numeric',
+      month: 'short',
+    }).format(refDate);
+
+    syncNativeAndroidPrayerBar({
+      settings: notificationSettings,
+      locationName: location.name,
+      dateLabel,
+      hijriLabel,
+      schedules: [schedule, tomorrowSchedule],
+    });
+  }, [
+    location,
+    schedule,
+    tomorrowSchedule,
+    notificationSettings,
+    permissionState,
+  ]);
 
   // Reflect next prayer countdown in browser tab title
   useEffect(() => {
@@ -311,16 +378,18 @@ export default function App() {
     const result = await requestBrowserNotificationPermission();
     setPermissionState(result);
     if (result === 'granted') {
-      dispatchBrowserNotification(
-        'Mihrab Bildirimleri Etkin',
-        `${location.name} için seçili namaz vakitlerinde bildirim alacaksınız.`,
-        { tag: 'mihrab-welcome' }
-      );
+      if (!isNativeAndroid()) {
+        dispatchBrowserNotification(
+          'Mihrab Bildirimleri Etkin',
+          `${location.name} için seçili namaz vakitlerinde bildirim alacaksınız.`,
+          { tag: 'mihrab-welcome' }
+        );
+      }
     }
   };
 
   const handleSendTestNotification = async () => {
-    let currentPerm = getNotificationPermissionState();
+    let currentPerm = await getUnifiedNotificationPermissionState();
     if (currentPerm === 'default') {
       currentPerm = await requestBrowserNotificationPermission();
       setPermissionState(currentPerm);
@@ -343,10 +412,40 @@ export default function App() {
   };
 
   const handleSendSummaryNotification = async () => {
-    let currentPerm = getNotificationPermissionState();
+    let currentPerm = await getUnifiedNotificationPermissionState();
     if (currentPerm === 'default') {
       currentPerm = await requestBrowserNotificationPermission();
       setPermissionState(currentPerm);
+    }
+
+    const nextSettings = notificationSettings.persistentSummary
+      ? notificationSettings
+      : { ...notificationSettings, persistentSummary: true };
+
+    if (!notificationSettings.persistentSummary) {
+      setNotificationSettings(nextSettings);
+    }
+
+    if (isNativeAndroid()) {
+      const refDate = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        12,
+        0,
+        0
+      );
+      const hijri = getHijriParts(refDate);
+      await syncNativeAndroidPrayerBar({
+        settings: nextSettings,
+        locationName: location.name,
+        dateLabel: new Intl.DateTimeFormat('tr-TR', {
+          day: 'numeric',
+          month: 'short',
+        }).format(refDate),
+        hijriLabel: `${hijri.day} ${hijri.monthNameTr} ${hijri.year}`,
+        schedules: [schedule, tomorrowSchedule],
+      });
     }
 
     const summaryLine = schedule.prayers
@@ -356,14 +455,18 @@ export default function App() {
     const title = `${location.name} Namaz Vakitleri`;
     const body = `Sıradaki: ${nextStatus.nextPrayer.label} (${nextStatus.countdownFormatted}) — ${summaryLine}`;
 
-    dispatchBrowserNotification(title, body, {
-      tag: 'mihrab-live-summary',
-      silent: true,
-    });
+    if (!isNativeAndroid()) {
+      dispatchBrowserNotification(title, body, {
+        tag: 'mihrab-live-summary',
+        silent: true,
+      });
+    }
 
     setActiveToast({
       id: `summary-${Date.now()}`,
-      title,
+      title: isNativeAndroid()
+        ? `${location.name} Vakitleri Bildirim Çubuğuna Sabitlendi`
+        : title,
       body,
       timestamp: nextStatus.nextPrayer.formattedTime,
     });
@@ -543,6 +646,27 @@ export default function App() {
 
       {/* Main Content Container */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8 md:pb-12 lg:px-8">
+        {isNativeAndroid() &&
+          permissionState !== 'granted' &&
+          notificationSettings.persistentSummary && (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#0F6E56]/30 bg-[#FFFFFF] px-4 py-3 text-xs dark:border-[#34D399]/30 dark:bg-[#121A24]">
+              <div className="flex items-center gap-2.5 text-[#363A38] dark:text-[#CBD5E1]">
+                <Bell className="h-4 w-4 shrink-0 text-[#0F6E56] dark:text-[#34D399]" />
+                <span>
+                  Telefonun bildirim çubuğunda günlük vakitleri sabitlemek için
+                  bildirim izni verin.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRequestPermission}
+                className="min-h-[38px] rounded-lg bg-[#0F6E56] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[#0B5744] dark:bg-[#10B981] dark:text-[#07130E] whitespace-nowrap"
+              >
+                Bildirim İzni Ver
+              </button>
+            </div>
+          )}
+
         {activeToast && (
           <div
             role="status"
