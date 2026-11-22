@@ -178,9 +178,10 @@ export function PdfBookReader({
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) {
           return;
         }
+        const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
         setPdfDoc(null);
         setLoadError(
-          'PDF dosyası yüklenemedi. Lütfen bağlantınızı veya dosya bütünlüğünü kontrol edin.'
+          `PDF dosyası yüklenemedi. Lütfen bağlantınızı veya dosya bütünlüğünü kontrol edin.${detail}`
         );
         setIsLoadingDoc(false);
       }

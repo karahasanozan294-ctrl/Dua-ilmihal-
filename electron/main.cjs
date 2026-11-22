@@ -97,6 +97,14 @@ function registerDistProtocol() {
         return new Response('Yasaklı yol', { status: 403 });
       }
 
+      const unpackedCandidate = targetPath.replace(
+        /app\.asar([\\/])/,
+        'app.asar.unpacked$1'
+      );
+      if (unpackedCandidate !== targetPath && fs.existsSync(unpackedCandidate)) {
+        targetPath = unpackedCandidate;
+      }
+
       if (!fs.existsSync(targetPath) || fs.statSync(targetPath).isDirectory()) {
         // SPA fallback (uzantısız yollar için index.html döndür)
         if (!path.extname(targetPath)) {
