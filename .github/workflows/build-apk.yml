@@ -1,0 +1,64 @@
+name: Android APK Oluştur
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-android-apk:
+    name: Mihrab Android APK Derleme
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kaynak kodları indir
+        uses: actions/checkout@v4
+
+      - name: Node.js 22 kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Java 21 (JDK) kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: Android SDK Platform 36 ve Build Tools yükle
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Bağımlılıkları yükle
+        run: npm install --legacy-peer-deps
+
+      - name: Web uygulamasını derle
+        run: npm run build
+
+      - name: Capacitor Android projesini hazırla
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+          node scripts/configure-android.mjs
+
+      - name: Debug APK derle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: APK dosyasını GitHub Artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mihrab-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

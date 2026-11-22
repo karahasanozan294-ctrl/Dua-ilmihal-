@@ -1,0 +1,6 @@
+{
+  "name": "Mihrab — Namaz Vakitleri & Kıble Pusulası",
+  "description": "Her konuma göre Diyanet uyumlu ezan saatleri, hassas kıble yön pusulası, aylık imsakiye ve namaz vakti bildirimleri.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
