@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit",
     "cap:sync": "npm run build && npx cap sync android",
     "apk:prepare": "npm run build && npx cap add android && node scripts/configure-android.mjs",
-    "exe:build": "npm run build && node scripts/generate-win-icons.mjs && npx electron-builder --config electron-builder.json --win portable --publish never"
+    "exe:build": "npm run build && node scripts/build-windows-exe.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",

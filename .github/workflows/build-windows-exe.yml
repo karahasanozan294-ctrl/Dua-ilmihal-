@@ -28,13 +28,10 @@ jobs:
         run: npm run build
 
       - name: Electron ve paketleyiciyi kur
-        run: npm install --no-save electron@^35.0.0 electron-builder@^26.0.0 --no-audit --no-fund
-
-      - name: Windows uygulama simgesini doğrula
-        run: node scripts/generate-win-icons.mjs
+        run: npm install --no-save --legacy-peer-deps electron@^35.0.0 electron-builder@^25.1.8 --no-audit --no-fund
 
       - name: Taşınabilir Windows EXE oluştur
-        run: npx electron-builder --config electron-builder.json --win portable --publish never
+        run: node scripts/build-windows-exe.mjs
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 

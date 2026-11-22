@@ -2,6 +2,7 @@ node_modules/
 build/
 dist/
 release/
+.electron-stage/
 coverage/
 .DS_Store
 *.log

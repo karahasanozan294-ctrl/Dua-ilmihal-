@@ -2,8 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 
-const SIZE = 256;
-
 function crc32(buf) {
   let c = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
@@ -24,22 +22,19 @@ function pngChunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-function encodePng(width, height, rgba) {
+function encodePng(size, rgba) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
 
-  const stride = width * 4 + 1;
-  const raw = Buffer.alloc(stride * height);
-  for (let y = 0; y < height; y++) {
+  const stride = size * 4 + 1;
+  const raw = Buffer.alloc(stride * size);
+  for (let y = 0; y < size; y++) {
     raw[y * stride] = 0;
-    rgba.copy(raw, y * stride + 1, y * width * 4, (y + 1) * width * 4);
+    rgba.copy(raw, y * stride + 1, y * size * 4, (y + 1) * size * 4);
   }
   const compressed = zlib.deflateSync(raw, { level: 9 });
 
@@ -51,29 +46,64 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-function createIcoFromPng(pngBuffer, width, height) {
-  const header = Buffer.alloc(6);
-  header.writeUInt16LE(0, 0); // reserved
-  header.writeUInt16LE(1, 2); // ICO type
-  header.writeUInt16LE(1, 4); // 1 image
+function createBmpDibEntry(size, rgba) {
+  const header = Buffer.alloc(40, 0);
+  header.writeUInt32LE(40, 0); // biSize
+  header.writeInt32LE(size, 4); // biWidth
+  header.writeInt32LE(size * 2, 8); // biHeight (XOR + AND)
+  header.writeUInt16LE(1, 12); // biPlanes
+  header.writeUInt16LE(32, 14); // biBitCount
+  header.writeUInt32LE(0, 16); // BI_RGB
+  header.writeUInt32LE(size * size * 4, 20); // biSizeImage
 
-  const entry = Buffer.alloc(16);
-  entry[0] = width >= 256 ? 0 : width;
-  entry[1] = height >= 256 ? 0 : height;
-  entry[2] = 0; // palette colors
-  entry[3] = 0; // reserved
-  entry.writeUInt16LE(1, 4); // color planes
-  entry.writeUInt16LE(32, 6); // bits per pixel
-  entry.writeUInt32LE(pngBuffer.length, 8);
-  entry.writeUInt32LE(22, 12); // image offset (6 + 16)
+  const xorMask = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    const srcRow = size - 1 - y; // bottom-up
+    for (let x = 0; x < size; x++) {
+      const srcIdx = (srcRow * size + x) * 4;
+      const dstIdx = (y * size + x) * 4;
+      xorMask[dstIdx] = rgba[srcIdx + 2]; // B
+      xorMask[dstIdx + 1] = rgba[srcIdx + 1]; // G
+      xorMask[dstIdx + 2] = rgba[srcIdx]; // R
+      xorMask[dstIdx + 3] = rgba[srcIdx + 3]; // A
+    }
+  }
 
-  return Buffer.concat([header, entry, pngBuffer]);
+  const andRowStride = Math.ceil(size / 32) * 4;
+  const andMask = Buffer.alloc(andRowStride * size, 0);
+  return Buffer.concat([header, xorMask, andMask]);
 }
 
-function blendPixel(buf, x, y, r, g, b, alpha) {
-  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE || alpha <= 0) return;
+function createMultiResIco(images) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2); // ICO
+  header.writeUInt16LE(images.length, 4);
+
+  let offset = 6 + images.length * 16;
+  const entries = [];
+  const payloads = [];
+
+  for (const img of images) {
+    const entry = Buffer.alloc(16, 0);
+    entry[0] = img.size >= 256 ? 0 : img.size;
+    entry[1] = img.size >= 256 ? 0 : img.size;
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(img.buffer.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    entries.push(entry);
+    payloads.push(img.buffer);
+    offset += img.buffer.length;
+  }
+
+  return Buffer.concat([header, ...entries, ...payloads]);
+}
+
+function blendPixel(buf, size, x, y, r, g, b, alpha) {
+  if (x < 0 || x >= size || y < 0 || y >= size || alpha <= 0) return;
   const a = Math.min(1, Math.max(0, alpha));
-  const idx = (y * SIZE + x) * 4;
+  const idx = (y * size + x) * 4;
   const dstA = buf[idx + 3] / 255;
   const outA = a + dstA * (1 - a);
   if (outA <= 0) return;
@@ -92,52 +122,51 @@ function roundedRectSdf(px, py, cx, cy, hw, hh, r) {
   return Math.hypot(dx, dy) + Math.min(Math.max(qx, qy), 0) - r;
 }
 
-function renderMihrabIcon() {
-  const rgba = Buffer.alloc(SIZE * SIZE * 4, 0);
-  const center = SIZE / 2;
+function renderMihrabIconAtSize(size) {
+  const rgba = Buffer.alloc(size * size * 4, 0);
+  const scale = size / 256;
+  const center = 128;
 
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const px = x + 0.5;
-      const py = y + 0.5;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const px = (x + 0.5) / scale;
+      const py = (y + 0.5) / scale;
 
-      // Dış yuvarlatılmış kare (zümrüt yeşili Mihrab amblemi)
-      const bgDist = roundedRectSdf(px, py, center, center, 118, 118, 52);
+      const bgDist = roundedRectSdf(px, py, center, center, 118, 118, 52) * scale;
       if (bgDist < 1) {
         const bgAlpha = Math.min(1, Math.max(0, 0.5 - bgDist));
-        const grad = (py / SIZE) * 0.16;
+        const grad = (py / 256) * 0.16;
         const r = Math.round(15 * (1 - grad) + 10 * grad);
         const g = Math.round(110 * (1 - grad) + 78 * grad);
         const b = Math.round(86 * (1 - grad) + 62 * grad);
-        blendPixel(rgba, x, y, r, g, b, bgAlpha);
+        blendPixel(rgba, size, x, y, r, g, b, bgAlpha);
 
-        // İnce altın iç çerçeve halkası
-        const ringDist = Math.abs(Math.hypot(px - center, py - center) - 96);
-        if (ringDist < 3) {
-          const ringAlpha = Math.min(1, Math.max(0, 2.2 - ringDist)) * 0.72;
-          blendPixel(rgba, x, y, 212, 168, 83, ringAlpha * bgAlpha);
+        const ringDist = Math.abs(Math.hypot(px - center, py - center) - 96) * scale;
+        const ringThickness = Math.max(1, 2.2 * scale);
+        if (ringDist < ringThickness + 1) {
+          const ringAlpha =
+            Math.min(1, Math.max(0, ringThickness - ringDist)) * 0.75;
+          blendPixel(rgba, size, x, y, 212, 168, 83, ringAlpha * bgAlpha);
         }
 
-        // Hilal (iki dairenin farkı)
-        const outerCrescent = Math.hypot(px - 122, py - 128) - 58;
-        const innerCrescent = Math.hypot(px - 144, py - 118) - 47;
+        const outerCrescent = (Math.hypot(px - 122, py - 128) - 58) * scale;
+        const innerCrescent = (Math.hypot(px - 144, py - 118) - 47) * scale;
         const crescentDist = Math.max(outerCrescent, -innerCrescent);
         if (crescentDist < 1) {
           const cAlpha = Math.min(1, Math.max(0, 0.5 - crescentDist));
-          blendPixel(rgba, x, y, 250, 249, 246, cAlpha);
+          blendPixel(rgba, size, x, y, 250, 249, 246, cAlpha);
         }
 
-        // Yıldız (8 köşeli sade yıldız / parlak nokta)
         const sx = px - 166;
         const sy = py - 98;
         const sr = Math.hypot(sx, sy);
-        if (sr < 18) {
+        if (sr < 20) {
           const ang = Math.atan2(sy, sx);
           const starRadius = 8 + 7 * Math.pow(Math.abs(Math.cos(ang * 2.5)), 2.5);
-          const starDist = sr - starRadius;
+          const starDist = (sr - starRadius) * scale;
           if (starDist < 1) {
             const sAlpha = Math.min(1, Math.max(0, 0.5 - starDist));
-            blendPixel(rgba, x, y, 234, 198, 122, sAlpha);
+            blendPixel(rgba, size, x, y, 234, 198, 122, sAlpha);
           }
         }
       }
@@ -150,10 +179,16 @@ function renderMihrabIcon() {
 const outDir = path.resolve(process.cwd(), 'electron');
 fs.mkdirSync(outDir, { recursive: true });
 
-const rgba = renderMihrabIcon();
-const png = encodePng(SIZE, SIZE, rgba);
-const ico = createIcoFromPng(png, SIZE, SIZE);
+const png256 = encodePng(256, renderMihrabIconAtSize(256));
+fs.writeFileSync(path.join(outDir, 'icon.png'), png256);
 
-fs.writeFileSync(path.join(outDir, 'icon.png'), png);
-fs.writeFileSync(path.join(outDir, 'icon.ico'), ico);
-console.log('Windows simgeleri oluşturuldu: electron/icon.png ve electron/icon.ico');
+const icoEntries = [
+  { size: 16, buffer: createBmpDibEntry(16, renderMihrabIconAtSize(16)) },
+  { size: 32, buffer: createBmpDibEntry(32, renderMihrabIconAtSize(32)) },
+  { size: 48, buffer: createBmpDibEntry(48, renderMihrabIconAtSize(48)) },
+  { size: 64, buffer: createBmpDibEntry(64, renderMihrabIconAtSize(64)) },
+  { size: 256, buffer: png256 },
+];
+
+fs.writeFileSync(path.join(outDir, 'icon.ico'), createMultiResIco(icoEntries));
+console.log('Çok çözünürlüklü Windows simgeleri oluşturuldu (16/32/48/64/256): electron/icon.ico');
