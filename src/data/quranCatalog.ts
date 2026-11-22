@@ -21,6 +21,272 @@ export interface SurahContent {
   isOfflineFallback?: boolean;
 }
 
+export interface QuranReciter {
+  id: string;
+  nameTr: string;
+  originTr: string;
+  styleTr: string;
+  everyAyahFolder: string;
+  quranComId?: number;
+}
+
+export const BESMELE_ARABIC = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+export const BESMELE_TURKISH = 'Rahmân ve Rahîm olan Allah’ın adıyla.';
+
+export const QURAN_RECITERS: QuranReciter[] = [
+  {
+    id: 'alafasy',
+    nameTr: 'Mişâri Râşid el-Afâsî',
+    originTr: 'Kuveyt',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Alafasy_128kbps',
+    quranComId: 7,
+  },
+  {
+    id: 'husary',
+    nameTr: 'Mahmûd Halîl el-Husarî',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Husary_128kbps',
+    quranComId: 6,
+  },
+  {
+    id: 'husary-muallim',
+    nameTr: 'Mahmûd Halîl el-Husarî (Muallim)',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Talimli / Ağır',
+    everyAyahFolder: 'Husary_Muallim_128kbps',
+    quranComId: 12,
+  },
+  {
+    id: 'abdulbasit-murattal',
+    nameTr: 'Abdülbâsit Abdüssamed (Mürattel)',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Abdul_Basit_Murattal_192kbps',
+    quranComId: 2,
+  },
+  {
+    id: 'abdulbasit-mujawwad',
+    nameTr: 'Abdülbâsit Abdüssamed (Mücevved)',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Makamlı / Tecvidli',
+    everyAyahFolder: 'Abdul_Basit_Mujawwad_128kbps',
+    quranComId: 1,
+  },
+  {
+    id: 'minshawi-murattal',
+    nameTr: 'Muhammed Sıddîk el-Minşâvî',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Minshawy_Murattal_128kbps',
+    quranComId: 9,
+  },
+  {
+    id: 'minshawi-mujawwad',
+    nameTr: 'Muhammed Sıddîk el-Minşâvî (Mücevved)',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Makamlı',
+    everyAyahFolder: 'Minshawy_Mujawwad_192kbps',
+    quranComId: 8,
+  },
+  {
+    id: 'mustafa-ismail',
+    nameTr: 'Mustafa İsmail',
+    originTr: 'Mısır · Şeyhü’l-Kurra',
+    styleTr: 'Makamlı',
+    everyAyahFolder: 'Mustafa_Ismail_48kbps',
+  },
+  {
+    id: 'tablawi',
+    nameTr: 'Muhammed et-Tablâvî',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Makamlı',
+    everyAyahFolder: 'Mohammad_al_Tablaway_128kbps',
+  },
+  {
+    id: 'banna',
+    nameTr: 'Mahmûd Ali el-Bennâ',
+    originTr: 'Mısır · Kurra',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'mahmoud_ali_al_banna_32kbps',
+  },
+  {
+    id: 'sudais',
+    nameTr: 'Abdurrahman es-Südeys',
+    originTr: 'Mekke · Kâbe İmamı',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Abdurrahmaan_As-Sudais_192kbps',
+    quranComId: 3,
+  },
+  {
+    id: 'shuraim',
+    nameTr: 'Suûd eş-Şureym',
+    originTr: 'Mekke · Kâbe İmamı',
+    styleTr: 'Hadr / Akıcı',
+    everyAyahFolder: 'Saood_ash-Shuraym_128kbps',
+    quranComId: 10,
+  },
+  {
+    id: 'maher',
+    nameTr: 'Mâhir el-Muaykılî',
+    originTr: 'Mekke · Kâbe İmamı',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'MaherAlMuaiqly128kbps',
+  },
+  {
+    id: 'dossari',
+    nameTr: 'Yâsir ed-Devserî',
+    originTr: 'Mekke · Kâbe İmamı',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Yasser_Ad-Dussary_128kbps',
+  },
+  {
+    id: 'hudhaify',
+    nameTr: 'Ali el-Huzeyfî',
+    originTr: 'Medine · Mescid-i Nebevî',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Hudhaify_128kbps',
+  },
+  {
+    id: 'ayyoub',
+    nameTr: 'Muhammed Eyyûb',
+    originTr: 'Medine · Mescid-i Nebevî',
+    styleTr: 'Hicaz Makamı',
+    everyAyahFolder: 'Muhammad_Ayyoub_128kbps',
+  },
+  {
+    id: 'ghamadi',
+    nameTr: 'Sa’d el-Ğâmidî',
+    originTr: 'Suudi Arabistan',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Ghamadi_40kbps',
+  },
+  {
+    id: 'shatri',
+    nameTr: 'Ebû Bekir eş-Şâtırî',
+    originTr: 'Cidde · Kurra',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Abu_Bakr_Ash-Shaatree_128kbps',
+    quranComId: 4,
+  },
+  {
+    id: 'qatami',
+    nameTr: 'Nâsır el-Katâmî',
+    originTr: 'Riyad',
+    styleTr: 'Mürattel',
+    everyAyahFolder: 'Nasser_Alqatami_128kbps',
+  },
+  {
+    id: 'rifai',
+    nameTr: 'Hânî er-Rifâî',
+    originTr: 'Cidde',
+    styleTr: 'Hüzünlü Mürattel',
+    everyAyahFolder: 'Hani_Rifai_192kbps',
+    quranComId: 5,
+  },
+];
+
+export function getReciterById(reciterId: string): QuranReciter {
+  return QURAN_RECITERS.find((r) => r.id === reciterId) ?? QURAN_RECITERS[0];
+}
+
+function pad3(n: number): string {
+  return String(n).padStart(3, '0');
+}
+
+export function getAyahAudioUrl(
+  reciterId: string,
+  surahNumber: number,
+  ayahNumber: number
+): string {
+  const reciter = getReciterById(reciterId);
+  return `https://everyayah.com/data/${reciter.everyAyahFolder}/${pad3(surahNumber)}${pad3(ayahNumber)}.mp3`;
+}
+
+export function getBesmeleAudioUrl(reciterId: string): string {
+  const reciter = getReciterById(reciterId);
+  return `https://everyayah.com/data/${reciter.everyAyahFolder}/001001.mp3`;
+}
+
+export function stripLeadingBesmele(
+  surahNumber: number,
+  ayahNumber: number,
+  arabicText: string
+): string {
+  if (surahNumber === 1 || surahNumber === 9 || ayahNumber !== 1) {
+    return arabicText;
+  }
+  const stripped = arabicText
+    .replace(
+      /^بِسْمِ\s+ٱللَّهِ\s+ٱلرَّحْمَٰنِ\s+ٱلرَّحِيمِ\s*/u,
+      ''
+    )
+    .replace(
+      /^بِسْمِ\s+اللَّهِ\s+الرَّحْمَنِ\s+الرَّحِيمِ\s*/u,
+      ''
+    )
+    .trim();
+  return stripped || arabicText;
+}
+
+export interface ArabicWordToken {
+  text: string;
+  wordIndex: number | null;
+}
+
+const ARABIC_LETTER_RE = /[\u0621-\u064A\u0671-\u06D3]/;
+
+export function tokenizeArabicAyah(arabic: string): ArabicWordToken[] {
+  const rawTokens = arabic.trim().split(/\s+/).filter(Boolean);
+  let idx = 0;
+  return rawTokens.map((text) => {
+    if (ARABIC_LETTER_RE.test(text)) {
+      const token: ArabicWordToken = { text, wordIndex: idx };
+      idx += 1;
+      return token;
+    }
+    return { text, wordIndex: null };
+  });
+}
+
+export function estimateWordWeights(tokens: ArabicWordToken[]): number[] {
+  const words = tokens.filter((t) => t.wordIndex !== null);
+  if (words.length === 0) return [];
+  const rawWeights = words.map((w) => {
+    let score = 0;
+    for (const ch of w.text) {
+      if (ch === '\u0653') {
+        score += 3.2; // Maddah elongation
+      } else if (ch === '\u0651') {
+        score += 0.9; // Shaddah emphasis
+      } else if (
+        ch === '\u0627' ||
+        ch === '\u0648' ||
+        ch === '\u064A' ||
+        ch === '\u0649' ||
+        ch === '\u0670'
+      ) {
+        score += 1.4; // Vowel/elongation letter
+      } else if (ARABIC_LETTER_RE.test(ch)) {
+        score += 1.0;
+      } else {
+        score += 0.15;
+      }
+    }
+    return Math.max(1.2, score);
+  });
+  const total = rawWeights.reduce((acc, v) => acc + v, 0);
+  let cumulative = 0;
+  return rawWeights.map((w) => {
+    cumulative += w / total;
+    return cumulative;
+  });
+}
+
+export type WordTimingSegment = [number, number, number]; // [wordIndex0Based, startRatio, endRatio]
+export type ChapterWordTimings = Record<number, WordTimingSegment[]>;
+
 export const SURAH_CATALOG: SurahMeta[] = [
   { number: 1, nameTr: 'Fâtiha', nameAr: 'الفاتحة', ayahCount: 7, revelation: 'Mekke', meaningTr: 'Açılış' },
   { number: 2, nameTr: 'Bakara', nameAr: 'البقرة', ayahCount: 286, revelation: 'Medine', meaningTr: 'İnek' },
@@ -183,6 +449,7 @@ const OFFLINE_SURAHS: Record<number, QuranAyah[]> = {
 };
 
 const surahMemoryCache = new Map<number, SurahContent>();
+const wordTimingsCache = new Map<string, ChapterWordTimings>();
 
 interface AlQuranApiEdition {
   ayahs: {
@@ -190,6 +457,19 @@ interface AlQuranApiEdition {
     text: string;
     audio?: string;
   }[];
+}
+
+function normalizeSurahContent(
+  surahNumber: number,
+  content: SurahContent
+): SurahContent {
+  return {
+    ...content,
+    ayahs: content.ayahs.map((a) => ({
+      ...a,
+      arabic: stripLeadingBesmele(surahNumber, a.numberInSurah, a.arabic),
+    })),
+  };
 }
 
 export async function fetchSurahContent(
@@ -207,7 +487,10 @@ export async function fetchSurahContent(
     try {
       const stored = window.localStorage.getItem(`mihrab_surah_v2_${surahNumber}`);
       if (stored) {
-        const parsed = JSON.parse(stored) as SurahContent;
+        const parsed = normalizeSurahContent(
+          surahNumber,
+          JSON.parse(stored) as SurahContent
+        );
         if (parsed.ayahs?.length > 0) {
           surahMemoryCache.set(surahNumber, parsed);
           return parsed;
@@ -240,7 +523,11 @@ export async function fetchSurahContent(
 
     const ayahs: QuranAyah[] = arabicEdition.ayahs.map((arAyah, idx) => ({
       numberInSurah: arAyah.numberInSurah,
-      arabic: arAyah.text,
+      arabic: stripLeadingBesmele(
+        surahNumber,
+        arAyah.numberInSurah,
+        arAyah.text
+      ),
       turkish: diyanetEdition.ayahs[idx]?.text ?? '',
       elmalili: elmaliliEdition.ayahs[idx]?.text ?? '',
       audioUrl: audioEdition?.ayahs[idx]?.audio,
@@ -269,5 +556,68 @@ export async function fetchSurahContent(
       return { meta, ayahs: fallback, isOfflineFallback: true };
     }
     throw err;
+  }
+}
+
+interface QuranComTimestamp {
+  verse_key: string;
+  timestamp_from: number;
+  timestamp_to: number;
+  segments?: number[][];
+}
+
+export async function fetchChapterWordTimings(
+  reciterId: string,
+  surahNumber: number,
+  signal?: AbortSignal
+): Promise<ChapterWordTimings> {
+  const reciter = getReciterById(reciterId);
+  if (!reciter.quranComId) return {};
+
+  const cacheKey = `${reciter.quranComId}:${surahNumber}`;
+  const cached = wordTimingsCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const res = await fetch(
+      `https://api.quran.com/api/v4/chapter_recitations/${reciter.quranComId}/${surahNumber}?segments=true`,
+      { signal }
+    );
+    if (!res.ok) return {};
+    const data = (await res.json()) as {
+      audio_file?: { timestamps?: QuranComTimestamp[] };
+    };
+    const list = data.audio_file?.timestamps;
+    if (!Array.isArray(list)) return {};
+
+    const result: ChapterWordTimings = {};
+    for (const ts of list) {
+      const ayahStr = ts.verse_key?.split(':')[1];
+      const ayahNum = ayahStr ? Number(ayahStr) : NaN;
+      if (!Number.isFinite(ayahNum) || !ts.segments?.length) continue;
+
+      const validSegs = ts.segments.filter(
+        (s) => s.length >= 3 && s[0] >= 1 && s[2] >= s[1]
+      );
+      if (validSegs.length === 0) continue;
+
+      const baseStart = Math.min(ts.timestamp_from, validSegs[0][1]);
+      const baseEnd = Math.max(
+        ts.timestamp_to,
+        validSegs[validSegs.length - 1][2]
+      );
+      const span = Math.max(1, baseEnd - baseStart);
+
+      result[ayahNum] = validSegs.map((s) => [
+        s[0] - 1,
+        Math.max(0, (s[1] - baseStart) / span),
+        Math.min(1, (s[2] - baseStart) / span),
+      ]);
+    }
+
+    wordTimingsCache.set(cacheKey, result);
+    return result;
+  } catch {
+    return {};
   }
 }

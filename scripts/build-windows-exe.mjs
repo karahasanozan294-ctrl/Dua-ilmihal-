@@ -67,6 +67,7 @@ const builderConfig = {
     output: 'release',
   },
   files: ['dist/**/*', 'electron/**/*'],
+  asarUnpack: ['dist/books/**/*'],
   win: {
     icon: 'electron/icon.ico',
     target: [

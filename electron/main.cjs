@@ -6,15 +6,13 @@ const {
   nativeImage,
   Notification,
   protocol,
-  net,
   shell,
 } = require('electron');
 const { Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { pathToFileURL } = require('url');
 
-// Özel güvenli protokol kaydı (kalıcı localStorage + IndexedDB + PDF.js Worker desteği)
+// Özel güvenli protokol kaydı (kalıcı localStorage + IndexedDB + PDF.js ES Module Worker + Range desteği)
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'mihrab',
@@ -23,9 +21,35 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
+      stream: true,
+      allowServiceWorkers: true,
     },
   },
 ]);
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.cjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.pdf': 'application/pdf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.wasm': 'application/wasm',
+  '.mp3': 'audio/mpeg',
+  '.txt': 'text/plain; charset=utf-8',
+};
 
 const DIST_DIR = path.resolve(__dirname, '../dist');
 const ICON_PNG = path.join(__dirname, 'icon.png');
@@ -54,7 +78,7 @@ if (!gotSingleLock) {
 }
 
 function registerDistProtocol() {
-  protocol.handle('mihrab', (request) => {
+  protocol.handle('mihrab', async (request) => {
     try {
       const reqUrl = new URL(request.url);
       let reqPath = decodeURIComponent(reqUrl.pathname || '/');
@@ -82,7 +106,50 @@ function registerDistProtocol() {
         }
       }
 
-      return net.fetch(pathToFileURL(targetPath).toString());
+      const ext = path.extname(targetPath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      const fileBuf = await fs.promises.readFile(targetPath);
+      const totalSize = fileBuf.length;
+
+      const rangeHeader = request.headers.get('range');
+      if (rangeHeader) {
+        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+        if (match) {
+          const start = Number(match[1]);
+          const end = match[2]
+            ? Math.min(Number(match[2]), totalSize - 1)
+            : totalSize - 1;
+          if (start >= totalSize || end < start) {
+            return new Response(null, {
+              status: 416,
+              headers: {
+                'Content-Range': `bytes */${totalSize}`,
+              },
+            });
+          }
+          const slice = fileBuf.subarray(start, end + 1);
+          return new Response(slice, {
+            status: 206,
+            headers: {
+              'Content-Type': contentType,
+              'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+              'Content-Length': String(slice.length),
+              'Accept-Ranges': 'bytes',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+
+      return new Response(fileBuf, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': String(totalSize),
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     } catch {
       return new Response('Sunucu hatası', { status: 500 });
     }

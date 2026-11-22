@@ -130,19 +130,36 @@ export function PdfBookReader({
   useEffect(() => {
     let cancelled = false;
     let loadedDoc: PDFDocumentProxy | null = null;
+    let activeLoadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
+    const abortController = new AbortController();
 
     setIsLoadingDoc(true);
     setLoadError(null);
 
-    const loadingTask =
-      activeDescriptor.kind === 'builtin'
-        ? pdfjsLib.getDocument({ url: activeDescriptor.book.url })
-        : pdfjsLib.getDocument({
-            data: new Uint8Array(activeDescriptor.book.data.slice(0)),
-          });
+    const openDocument = async () => {
+      try {
+        let pdfBytes: Uint8Array;
+        if (activeDescriptor.kind === 'builtin') {
+          const resolvedUrl = new URL(
+            activeDescriptor.book.url.replace(/^\/+/, ''),
+            window.location.href
+          ).toString();
+          const res = await fetch(resolvedUrl, { signal: abortController.signal });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const buf = await res.arrayBuffer();
+          pdfBytes = new Uint8Array(buf);
+        } else {
+          pdfBytes = new Uint8Array(activeDescriptor.book.data.slice(0));
+        }
 
-    loadingTask.promise
-      .then((doc) => {
+        if (cancelled) return;
+
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+        activeLoadingTask = loadingTask;
+        const doc = await loadingTask.promise;
+
         if (cancelled) {
           doc.cleanup().catch(() => undefined);
           return;
@@ -157,23 +174,29 @@ export function PdfBookReader({
         setCurrentPage(restored);
         setPageInput(String(restored));
         setIsLoadingDoc(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPdfDoc(null);
-          setLoadError(
-            'PDF dosyası yüklenemedi. Lütfen bağlantınızı veya dosya bütünlüğünü kontrol edin.'
-          );
-          setIsLoadingDoc(false);
+      } catch (err) {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) {
+          return;
         }
-      });
+        setPdfDoc(null);
+        setLoadError(
+          'PDF dosyası yüklenemedi. Lütfen bağlantınızı veya dosya bütünlüğünü kontrol edin.'
+        );
+        setIsLoadingDoc(false);
+      }
+    };
+
+    openDocument();
 
     return () => {
       cancelled = true;
+      abortController.abort();
       if (loadedDoc) {
         loadedDoc.cleanup().catch(() => undefined);
       }
-      loadingTask.destroy().catch(() => undefined);
+      if (activeLoadingTask) {
+        activeLoadingTask.destroy().catch(() => undefined);
+      }
     };
   }, [activeDescriptor, activeId]);
 
