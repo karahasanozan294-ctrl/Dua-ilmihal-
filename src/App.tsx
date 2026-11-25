@@ -30,6 +30,8 @@ import {
   getNotificationPermissionState,
   getUnifiedNotificationPermissionState,
   isNativeAndroid,
+  isNativeIos,
+  isNativeMobile,
   NotificationPermissionState,
   playGentleAdhanChime,
   playZikirTapSound,
@@ -270,7 +272,7 @@ export default function App() {
       if (!active) return;
       setPermissionState(current);
 
-      if (isNativeAndroid() && current === 'default') {
+      if (isNativeMobile() && current === 'default') {
         const promptedKey = 'mihrab_native_perm_prompted';
         const alreadyPrompted = window.localStorage.getItem(promptedKey);
         if (!alreadyPrompted) {
@@ -285,9 +287,9 @@ export default function App() {
     };
   }, []);
 
-  // Push 2-day prayer schedule to native Android notification shade & alarms
+  // Push 2-day prayer schedule to native Android notification shade / iOS local notifications
   useEffect(() => {
-    if (!isNativeAndroid()) return;
+    if (!isNativeMobile()) return;
     const refDate = new Date(
       now.getFullYear(),
       now.getMonth(),
@@ -381,7 +383,7 @@ export default function App() {
     const result = await requestBrowserNotificationPermission();
     setPermissionState(result);
     if (result === 'granted') {
-      if (!isNativeAndroid()) {
+      if (!isNativeMobile()) {
         dispatchBrowserNotification(
           'Mihrab Bildirimleri Etkin',
           `${location.name} için seçili namaz vakitlerinde bildirim alacaksınız.`,
@@ -429,7 +431,7 @@ export default function App() {
       setNotificationSettings(nextSettings);
     }
 
-    if (isNativeAndroid()) {
+    if (isNativeMobile()) {
       const refDate = new Date(
         now.getFullYear(),
         now.getMonth(),
@@ -458,7 +460,12 @@ export default function App() {
     const title = `${location.name} Namaz Vakitleri`;
     const body = `Sıradaki: ${nextStatus.nextPrayer.label} (${nextStatus.countdownFormatted}) — ${summaryLine}`;
 
-    if (!isNativeAndroid()) {
+    if (isNativeIos()) {
+      dispatchBrowserNotification(title, body, {
+        tag: 'mihrab-live-summary',
+        silent: true,
+      });
+    } else if (!isNativeAndroid()) {
       dispatchBrowserNotification(title, body, {
         tag: 'mihrab-live-summary',
         silent: true,
@@ -469,6 +476,8 @@ export default function App() {
       id: `summary-${Date.now()}`,
       title: isNativeAndroid()
         ? `${location.name} Vakitleri Bildirim Çubuğuna Sabitlendi`
+        : isNativeIos()
+        ? `${location.name} Vakitleri iPhone Bildirim Merkezine Gönderildi`
         : title,
       body,
       timestamp: nextStatus.nextPrayer.formattedTime,
@@ -649,15 +658,16 @@ export default function App() {
 
       {/* Main Content Container */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 sm:px-6 sm:py-8 md:pb-12 lg:px-8">
-        {isNativeAndroid() &&
+        {isNativeMobile() &&
           permissionState !== 'granted' &&
           notificationSettings.persistentSummary && (
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#0F6E56]/30 bg-[#FFFFFF] px-4 py-3 text-xs dark:border-[#34D399]/30 dark:bg-[#121A24]">
               <div className="flex items-center gap-2.5 text-[#363A38] dark:text-[#CBD5E1]">
                 <Bell className="h-4 w-4 shrink-0 text-[#0F6E56] dark:text-[#34D399]" />
                 <span>
-                  Telefonun bildirim çubuğunda günlük vakitleri sabitlemek için
-                  bildirim izni verin.
+                  {isNativeIos()
+                    ? 'Namaz vakti uyarılarını kilit ekranı ve bildirim merkezinde almak için bildirim izni verin.'
+                    : 'Telefonun bildirim çubuğunda günlük vakitleri sabitlemek için bildirim izni verin.'}
                 </span>
               </div>
               <button

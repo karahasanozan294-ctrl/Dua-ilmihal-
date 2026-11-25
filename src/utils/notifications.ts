@@ -69,11 +69,23 @@ export function isNativeAndroid(): boolean {
   }
 }
 
+export function isNativeIos(): boolean {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+  } catch {
+    return false;
+  }
+}
+
+export function isNativeMobile(): boolean {
+  return isNativeAndroid() || isNativeIos();
+}
+
 export function getNotificationPermissionState(): NotificationPermissionState {
   if (isDesktopWindows()) {
     return 'granted';
   }
-  if (isNativeAndroid()) {
+  if (isNativeMobile()) {
     return 'default';
   }
   if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -86,7 +98,7 @@ export async function getUnifiedNotificationPermissionState(): Promise<Notificat
   if (isDesktopWindows()) {
     return 'granted';
   }
-  if (isNativeAndroid()) {
+  if (isNativeMobile()) {
     try {
       const res = await MihrabNativeNotifications.getPermissionStatus();
       return res.state ?? 'default';
@@ -101,7 +113,7 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
   if (isDesktopWindows()) {
     return 'granted';
   }
-  if (isNativeAndroid()) {
+  if (isNativeMobile()) {
     try {
       const res = await MihrabNativeNotifications.requestPermission();
       return res.state ?? 'denied';
@@ -127,7 +139,7 @@ export async function syncNativeAndroidPrayerBar(params: {
   hijriLabel: string;
   schedules: DailyPrayerSchedule[];
 }): Promise<NotificationPermissionState | null> {
-  if (!isNativeAndroid()) return null;
+  if (!isNativeMobile()) return null;
 
   try {
     const flatPrayers = params.schedules.flatMap((daySchedule) =>
@@ -167,7 +179,7 @@ export function dispatchBrowserNotification(
     return true;
   }
 
-  if (isNativeAndroid()) {
+  if (isNativeMobile()) {
     MihrabNativeNotifications.sendAlertNotification({ title, body }).catch(
       () => undefined
     );

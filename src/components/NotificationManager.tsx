@@ -14,6 +14,7 @@ import {
 } from '../types/prayer';
 import {
   isNativeAndroid,
+  isNativeIos,
   NotificationPermissionState,
 } from '../utils/notifications';
 import { formatTimeInZone, NextPrayerStatus } from '../utils/prayerCalculator';
@@ -59,6 +60,7 @@ export function NotificationManager({
   };
 
   const nativeAndroid = isNativeAndroid();
+  const nativeIos = isNativeIos();
 
   const permissionLabel = nativeAndroid
     ? permissionState === 'granted'
@@ -66,6 +68,12 @@ export function NotificationManager({
       : permissionState === 'denied'
       ? 'Android bildirim izni kapalı (Uygulama ayarlarından açabilirsiniz)'
       : 'Bildirim çubuğunda vakitleri göstermek için izin bekleniyor'
+    : nativeIos
+    ? permissionState === 'granted'
+      ? 'iOS bildirim izni aktif · Vakit bildirimleri zamanlandı'
+      : permissionState === 'denied'
+      ? 'iOS bildirim izni kapalı (iPhone Ayarlar > Bildirimler bölümünden açabilirsiniz)'
+      : 'iPhone kilit ekranı ve bildirim merkezinde vakit uyarıları için izin bekleniyor'
     : permissionState === 'granted'
     ? 'Tarayıcı bildirimleri onaylı'
     : permissionState === 'denied'
@@ -212,6 +220,8 @@ export function NotificationManager({
                   <div className="text-xs text-[#666C68] dark:text-[#8E9BA4]">
                     {nativeAndroid
                       ? 'Telefonun bildirim çubuğunda günlük 6 vakti ve geri sayımı sabit gösterir'
+                      : nativeIos
+                      ? 'Uygulama üst şeridinde sıradaki vakti sabit tutar ve istendiğinde iPhone Bildirim Merkezine özet gönderir'
                       : 'Gezinirken sıradaki vakti ve kalan süreyi üst şeritte sabit tutar'}
                   </div>
                 </div>

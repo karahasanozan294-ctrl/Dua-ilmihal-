@@ -34,3 +34,17 @@ Projeye ayrıca Windows 10/11 için kurulum gerektirmeyen tek dosya **`.exe`** (
   1. Deponuzdaki **Actions** sekmesinden **Windows EXE Oluştur** iş akışını çalıştırın (veya `main`/`master` dalına yüklediğinizde otomatik çalışır).
   2. Tamamlandığında **Artifacts** bölümünden **`Mihrab-Windows-EXE`** dosyasını indirin ve içindeki **`Mihrab-Windows-Portable.exe`** dosyasına çift tıklayarak doğrudan çalıştırın.
 
+---
+
+## iPhone / iPad (.ipa) Oluşturma
+
+Projeye **Capacitor iOS** ve **GitHub Actions (macOS)** üzerinden otomatik **`.ipa`** (`Mihrab-iOS.ipa`) üretme desteği de eklenmiştir:
+
+- **Yapılandırılan Dosyalar**: `scripts/configure-ios.mjs`, `.github/workflows/build-ios.yml`, `capacitor.config.ts`
+- **Özellikler**: Tüm namaz vakitleri, canlı Kıble pusulası, Zikirmatik, Kur’an-ı Kerim (20 Kurra Hafız + Besmele + kelime altı canlı ok takibi), Hak Dini Tefsiri, Riyâzu’s-Sâlihîn, Muhtasar İlmihal, 240 sayfalık PDF kitaplık ve iPhone/iPad yerel kilit ekranı vakit bildirimleri (`UNUserNotificationCenter`) dahildir.
+- **GitHub Actions ile `.ipa` Alma**:
+  1. Deponuzdaki **Actions** sekmesinden **iOS IPA Oluştur** iş akışını çalıştırın (veya `main`/`master` dalına gönderdiğinizde otomatik başlar).
+  2. Tamamlandığında **Artifacts** bölümünden **`Mihrab-iOS-IPA`** dosyasını indirip içindeki **`Mihrab-iOS.ipa`** dosyasını çıkarın.
+  3. **iPhone/iPad’e Kurulum**: Apple Developer hesabınız yoksa bilgisayarınızdan **Sideloadly**, **AltStore** veya **SideStore** ile ücretsiz Apple ID’nizi kullanarak `.ipa` dosyasını iPhone’unuza kurabilirsiniz (iOS Ayarlar → Genel → VPN ve Aygıt Yönetimi bölümünden güven onayı gerekir). Ücretli Apple Developer sertifikanız varsa GitHub Secrets (`IOS_P12_BASE64`, `IOS_P12_PASSWORD`, `IOS_PROVISION_BASE64`) ekleyerek doğrudan imzalı IPA da üretebilirsiniz.
+
+

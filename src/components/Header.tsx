@@ -38,7 +38,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <>
-      <header className="md:sticky md:top-0 z-30 border-b border-[#E5E0D5] bg-[#F7F5F0]/90 backdrop-blur-md dark:border-[#1E2936] dark:bg-[#0B1117]/90">
+      <header className="md:sticky md:top-0 z-30 border-b border-[#E5E0D5] bg-[#F7F5F0]/90 pt-[env(safe-area-inset-top)] backdrop-blur-md dark:border-[#1E2936] dark:bg-[#0B1117]/90">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-8 px-4 sm:px-6 lg:px-8">
           {/* Zone 1: Single-line Brand Wordmark */}
           <button
@@ -98,7 +98,7 @@ export function Header({
       {/* Mobile Bottom Tab Bar (Thumb Zone) */}
       <nav
         aria-label="Mobil alt menü"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-[#E5E0D5] bg-[#FFFFFF]/95 backdrop-blur-md dark:border-[#1E2936] dark:bg-[#101820]/95"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-[#E5E0D5] bg-[#FFFFFF]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md dark:border-[#1E2936] dark:bg-[#101820]/95"
       >
         <div className="grid h-16 grid-cols-5 items-center">
           {NAV_ITEMS.map((item) => {
