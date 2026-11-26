@@ -9,6 +9,7 @@ import { MonthlySchedule } from './components/MonthlySchedule';
 import { NotificationManager } from './components/NotificationManager';
 import { PrayerOverview } from './components/PrayerOverview';
 import { QiblaCompass } from './components/QiblaCompass';
+import { EsmaulHusnaReader } from './components/EsmaulHusnaReader';
 import { QuranReader } from './components/QuranReader';
 import { HakDiniTefsirReader } from './components/HakDiniTefsirReader';
 import { MuhtasarIlmihalReader } from './components/MuhtasarIlmihalReader';
@@ -151,7 +152,7 @@ export default function App() {
     'today' | 'zikirmatik' | 'imsakiye'
   >('today');
   const [librarySubView, setLibrarySubView] = useState<
-    'mushaf' | 'tefsir' | 'riyaz' | 'ilmihal' | 'pdf'
+    'mushaf' | 'tefsir' | 'riyaz' | 'ilmihal' | 'esma' | 'pdf'
   >('mushaf');
   const [tefsirInitialSurah, setTefsirInitialSurah] = useState<
     number | undefined
@@ -605,6 +606,37 @@ export default function App() {
     setZikirState((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleSendEsmaToZikirmatik = (
+    title: string,
+    arabic: string,
+    target: number
+  ) => {
+    setZikirState((prev) => {
+      const existing = prev.items.find((i) => i.title === title);
+      if (existing) {
+        return { ...prev, activeId: existing.id };
+      }
+      const id = `esma-${Date.now()}`;
+      const newItem: ZikirItem = {
+        id,
+        title,
+        arabic,
+        meaning: 'Esmâü’l-Hüsnâ Zikri',
+        target,
+        count: 0,
+        rounds: 0,
+        isCustom: true,
+      };
+      return {
+        ...prev,
+        items: [newItem, ...prev.items],
+        activeId: id,
+      };
+    });
+    setActiveSection('vakitler');
+    setPrayerSubView('zikirmatik');
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F5F0] text-[#171A19] dark:bg-[#0B1117] dark:text-[#EDF2F0]">
       <Header
@@ -897,6 +929,19 @@ export default function App() {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={librarySubView === 'esma'}
+                  onClick={() => setLibrarySubView('esma')}
+                  className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                    librarySubView === 'esma'
+                      ? 'bg-white text-[#171A19] shadow-xs dark:bg-[#233142] dark:text-[#EDF2F0]'
+                      : 'text-[#575C59] hover:text-[#171A19] dark:text-[#9CA7B0]'
+                  }`}
+                >
+                  Esmâü’l-Hüsnâ (99 İsim)
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={librarySubView === 'pdf'}
                   onClick={() => setLibrarySubView('pdf')}
                   className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
@@ -926,6 +971,12 @@ export default function App() {
             {librarySubView === 'riyaz' && <RiyazusSalihinReader />}
 
             {librarySubView === 'ilmihal' && <MuhtasarIlmihalReader />}
+
+            {librarySubView === 'esma' && (
+              <EsmaulHusnaReader
+                onSendToZikirmatik={handleSendEsmaToZikirmatik}
+              />
+            )}
 
             {librarySubView === 'pdf' && <PdfBookReader mode="library" />}
           </div>
@@ -1011,6 +1062,16 @@ export default function App() {
               className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
             >
               Muhtasar İlmihal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('kuran');
+                setLibrarySubView('esma');
+              }}
+              className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
+            >
+              Esmâü’l-Hüsnâ
             </button>
             <button
               type="button"
