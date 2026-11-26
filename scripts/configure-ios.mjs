@@ -92,7 +92,7 @@ import Capacitor
 import UserNotifications
 import AVFoundation
 
-@main
+@UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
 
@@ -132,7 +132,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 }
 
-class MihrabViewController: CAPBridgeViewController {
+open class MihrabViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(MihrabNotificationPlugin())
     }
