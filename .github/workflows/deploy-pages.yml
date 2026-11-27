@@ -17,8 +17,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  web-zip:
+    name: Evrensel Web Paketi (Netlify / Cloudflare / Sunucu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kaynak kodları indir
+        uses: actions/checkout@v5
+
+      - name: Node.js 22 kur
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Bağımlılıkları yükle
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Web & PWA paketini derle
+        run: |
+          VITE_BASE_PATH="/" npm run build
+          touch dist/.nojekyll
+          cp dist/index.html dist/404.html
+
+      - name: Web paketini Artifact olarak yükle
+        uses: actions/upload-artifact@v6
+        with:
+          name: Mihrab-Web-Paketi
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
+
   build:
-    name: Web & PWA Derleme
+    name: GitHub Pages Web & PWA Derleme
     runs-on: ubuntu-latest
     steps:
       - name: Kaynak kodları indir
