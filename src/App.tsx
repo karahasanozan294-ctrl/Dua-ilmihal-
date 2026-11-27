@@ -8,13 +8,21 @@ import { LocationModal } from './components/LocationModal';
 import { MonthlySchedule } from './components/MonthlySchedule';
 import { NotificationManager } from './components/NotificationManager';
 import { PrayerOverview } from './components/PrayerOverview';
+import {
+  DesktopMiniWidgetView,
+  FloatingMiniWidget,
+  WidgetPreferences,
+  WidgetTheme,
+} from './components/PrayerWidgetCard';
 import { QiblaCompass } from './components/QiblaCompass';
 import { EsmaulHusnaReader } from './components/EsmaulHusnaReader';
 import { QuranReader } from './components/QuranReader';
 import { HakDiniTefsirReader } from './components/HakDiniTefsirReader';
 import { MuhtasarIlmihalReader } from './components/MuhtasarIlmihalReader';
 import { PdfBookReader } from './components/PdfBookReader';
+import { RamuzElHadisReader } from './components/RamuzElHadisReader';
 import { RiyazusSalihinReader } from './components/RiyazusSalihinReader';
+import { WidgetModal } from './components/WidgetModal';
 import { Zikirmatik, ZikirmatikQuickCard } from './components/Zikirmatik';
 import { TURKEY_PROVINCES } from './data/cities';
 import { getHijriParts } from './data/islamicCalendar';
@@ -60,6 +68,13 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     aksam: true,
     yatsi: true,
   },
+};
+
+const DEFAULT_WIDGET_PREFS: WidgetPreferences = {
+  variant: 'wide',
+  theme: 'light',
+  showHijri: true,
+  floatingEnabled: false,
 };
 
 function readStorage<T>(key: string, fallback: T): T {
@@ -152,12 +167,17 @@ export default function App() {
     'today' | 'zikirmatik' | 'imsakiye'
   >('today');
   const [librarySubView, setLibrarySubView] = useState<
-    'mushaf' | 'tefsir' | 'riyaz' | 'ilmihal' | 'esma' | 'pdf'
+    'mushaf' | 'tefsir' | 'riyaz' | 'ramuz' | 'ilmihal' | 'esma' | 'pdf'
   >('mushaf');
   const [tefsirInitialSurah, setTefsirInitialSurah] = useState<
     number | undefined
   >(undefined);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+
+  const isDesktopWidgetMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('widget') === '1';
 
   const [location, setLocation] = useState<LocationInfo>(() =>
     readStorage<LocationInfo>('mihrab_location', DEFAULT_LOCATION)
@@ -181,6 +201,9 @@ export default function App() {
         DEFAULT_NOTIFICATION_SETTINGS
       )
     );
+  const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreferences>(() =>
+    readStorage<WidgetPreferences>('mihrab_widget_prefs', DEFAULT_WIDGET_PREFS)
+  );
 
   const [permissionState, setPermissionState] =
     useState<NotificationPermissionState>(() => getNotificationPermissionState());
@@ -228,6 +251,10 @@ export default function App() {
         JSON.stringify(recentLocations)
       );
       window.localStorage.setItem('mihrab_zikir', JSON.stringify(zikirState));
+      window.localStorage.setItem(
+        'mihrab_widget_prefs',
+        JSON.stringify(widgetPrefs)
+      );
     } catch {
       // Ignore storage errors
     }
@@ -238,7 +265,26 @@ export default function App() {
     notificationSettings,
     recentLocations,
     zikirState,
+    widgetPrefs,
   ]);
+
+  // Keep secondary Desktop Widget window synchronized with main window changes
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.newValue) return;
+      try {
+        if (e.key === 'mihrab_location') setLocation(JSON.parse(e.newValue));
+        if (e.key === 'mihrab_method') setMethodId(JSON.parse(e.newValue));
+        if (e.key === 'mihrab_madhab') setMadhabId(JSON.parse(e.newValue));
+        if (e.key === 'mihrab_dark') setIsDark(JSON.parse(e.newValue));
+        if (e.key === 'mihrab_widget_prefs') setWidgetPrefs(JSON.parse(e.newValue));
+      } catch {
+        // Ignore malformed storage updates
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // 1-second precision clock tick
   useEffect(() => {
@@ -637,6 +683,25 @@ export default function App() {
     setPrayerSubView('zikirmatik');
   };
 
+  if (isDesktopWidgetMode) {
+    const cycleTheme = () => {
+      const order: WidgetTheme[] = ['light', 'emerald', 'dark'];
+      const next = order[(order.indexOf(widgetPrefs.theme) + 1) % order.length];
+      setWidgetPrefs((prev) => ({ ...prev, theme: next }));
+    };
+
+    return (
+      <DesktopMiniWidgetView
+        location={location}
+        schedule={schedule}
+        nextStatus={nextStatus}
+        theme={widgetPrefs.theme}
+        showHijri={widgetPrefs.showHijri}
+        onCycleTheme={cycleTheme}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F5F0] text-[#171A19] dark:bg-[#0B1117] dark:text-[#EDF2F0]">
       <Header
@@ -806,6 +871,7 @@ export default function App() {
                   onOpenNotifications={() => setActiveSection('bildirimler')}
                   onOpenQibla={() => setActiveSection('kible')}
                   onOpenLocationModal={() => setIsLocationModalOpen(true)}
+                  onOpenWidgetModal={() => setIsWidgetModalOpen(true)}
                 />
                 <HijriSummaryCard
                   now={now}
@@ -830,6 +896,10 @@ export default function App() {
                   onOpenRiyaz={() => {
                     setActiveSection('kuran');
                     setLibrarySubView('riyaz');
+                  }}
+                  onOpenRamuz={() => {
+                    setActiveSection('kuran');
+                    setLibrarySubView('ramuz');
                   }}
                 />
               </>
@@ -916,6 +986,19 @@ export default function App() {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={librarySubView === 'ramuz'}
+                  onClick={() => setLibrarySubView('ramuz')}
+                  className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                    librarySubView === 'ramuz'
+                      ? 'bg-white text-[#171A19] shadow-xs dark:bg-[#233142] dark:text-[#EDF2F0]'
+                      : 'text-[#575C59] hover:text-[#171A19] dark:text-[#9CA7B0]'
+                  }`}
+                >
+                  Râmûzü’l-Ehâdîs
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={librarySubView === 'ilmihal'}
                   onClick={() => setLibrarySubView('ilmihal')}
                   className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
@@ -970,6 +1053,8 @@ export default function App() {
 
             {librarySubView === 'riyaz' && <RiyazusSalihinReader />}
 
+            {librarySubView === 'ramuz' && <RamuzElHadisReader />}
+
             {librarySubView === 'ilmihal' && <MuhtasarIlmihalReader />}
 
             {librarySubView === 'esma' && (
@@ -995,6 +1080,7 @@ export default function App() {
             onRequestPermission={handleRequestPermission}
             onSendTestNotification={handleSendTestNotification}
             onSendSummaryNotification={handleSendSummaryNotification}
+            onOpenWidgetModal={() => setIsWidgetModalOpen(true)}
           />
         )}
       </main>
@@ -1057,6 +1143,16 @@ export default function App() {
               type="button"
               onClick={() => {
                 setActiveSection('kuran');
+                setLibrarySubView('ramuz');
+              }}
+              className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
+            >
+              Râmûzü’l-Ehâdîs
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('kuran');
                 setLibrarySubView('ilmihal');
               }}
               className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
@@ -1107,6 +1203,30 @@ export default function App() {
         currentLocation={location}
         recentLocations={recentLocations}
         onSelectLocation={handleSelectLocation}
+      />
+
+      {widgetPrefs.floatingEnabled && (
+        <FloatingMiniWidget
+          location={location}
+          schedule={schedule}
+          nextStatus={nextStatus}
+          theme={widgetPrefs.theme}
+          showHijri={widgetPrefs.showHijri}
+          onClose={() =>
+            setWidgetPrefs((prev) => ({ ...prev, floatingEnabled: false }))
+          }
+          onOpenWidgetModal={() => setIsWidgetModalOpen(true)}
+        />
+      )}
+
+      <WidgetModal
+        isOpen={isWidgetModalOpen}
+        onClose={() => setIsWidgetModalOpen(false)}
+        location={location}
+        schedule={schedule}
+        nextStatus={nextStatus}
+        preferences={widgetPrefs}
+        onUpdatePreferences={setWidgetPrefs}
       />
     </div>
   );

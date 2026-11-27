@@ -2,6 +2,7 @@ import {
   Bell,
   BellOff,
   Compass,
+  LayoutGrid,
   MapPin,
   Moon,
   Sun,
@@ -33,6 +34,7 @@ interface PrayerOverviewProps {
   onOpenNotifications: () => void;
   onOpenQibla: () => void;
   onOpenLocationModal: () => void;
+  onOpenWidgetModal?: () => void;
 }
 
 export function PrayerOverview({
@@ -50,6 +52,7 @@ export function PrayerOverview({
   onOpenNotifications,
   onOpenQibla,
   onOpenLocationModal,
+  onOpenWidgetModal,
 }: PrayerOverviewProps) {
   const localClock = formatFullClockInZone(now, location.timezone);
 
@@ -313,7 +316,18 @@ export function PrayerOverview({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenWidgetModal && (
+              <button
+                type="button"
+                onClick={onOpenWidgetModal}
+                className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[#DDD7C9] bg-[#FAF9F6] px-3 py-1.5 text-xs font-medium text-[#171A19] transition-colors hover:border-[#0F6E56] hover:text-[#0F6E56] dark:border-[#243242] dark:bg-[#0D141C] dark:text-[#EDF2F0] dark:hover:border-[#34D399] dark:hover:text-[#34D399] whitespace-nowrap"
+              >
+                <LayoutGrid className="h-3.5 w-3.5 text-[#0F6E56] dark:text-[#34D399]" aria-hidden="true" />
+                <span>Widget Ekle</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onOpenNotifications}

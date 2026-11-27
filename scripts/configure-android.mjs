@@ -50,13 +50,69 @@ const receiverSnippets = `
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".MihrabPrayerWidgetProvider"
+            android:exported="true"
+            android:label="Mihrab Vakitler (4×2)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mihrab_prayer_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".MihrabCompactWidgetProvider"
+            android:exported="true"
+            android:label="Mihrab Sıradaki Vakit (2×1)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mihrab_compact_widget_info" />
+        </receiver>
 `;
 
-if (!manifest.includes('PrayerAlarmReceiver')) {
-  manifest = manifest.replace(
-    '</application>',
-    `${receiverSnippets}    </application>`
-  );
+if (!manifest.includes('PrayerAlarmReceiver') || !manifest.includes('MihrabPrayerWidgetProvider')) {
+  if (!manifest.includes('PrayerAlarmReceiver')) {
+    manifest = manifest.replace(
+      '</application>',
+      `${receiverSnippets}    </application>`
+    );
+  } else if (!manifest.includes('MihrabPrayerWidgetProvider')) {
+    const widgetReceivers = `
+        <receiver
+            android:name=".MihrabPrayerWidgetProvider"
+            android:exported="true"
+            android:label="Mihrab Vakitler (4×2)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mihrab_prayer_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".MihrabCompactWidgetProvider"
+            android:exported="true"
+            android:label="Mihrab Sıradaki Vakit (2×1)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mihrab_compact_widget_info" />
+        </receiver>
+`;
+    manifest = manifest.replace(
+      '</application>',
+      `${widgetReceivers}    </application>`
+    );
+  }
 }
 
 fs.writeFileSync(manifestPath, manifest, 'utf8');
@@ -89,6 +145,8 @@ fs.writeFileSync(
     <color name="mihrab_notif_active">#0F6E56</color>
     <color name="mihrab_notif_active_bg">#E6F4F0</color>
     <color name="mihrab_notif_divider">#E2DDD2</color>
+    <color name="mihrab_widget_bg">#FBF9F5</color>
+    <color name="mihrab_widget_border">#E5E0D5</color>
 </resources>
 `,
   'utf8'
@@ -104,6 +162,8 @@ fs.writeFileSync(
     <color name="mihrab_notif_active">#34D399</color>
     <color name="mihrab_notif_active_bg">#123027</color>
     <color name="mihrab_notif_divider">#253344</color>
+    <color name="mihrab_widget_bg">#121A24</color>
+    <color name="mihrab_widget_border">#223040</color>
 </resources>
 `,
   'utf8'
@@ -349,6 +409,197 @@ ${sixColumnPrayerRowXml}
   'utf8'
 );
 
+// 4b. Ana Ekran Widget Arka Planı, Düzenleri ve AppWidgetProvider Metadata XML'leri
+fs.writeFileSync(
+  path.join(resDir, 'drawable/mihrab_widget_bg.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/mihrab_widget_bg" />
+    <corners android:radius="18dp" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/mihrab_widget_border" />
+</shape>
+`,
+  'utf8'
+);
+
+fs.writeFileSync(
+  path.join(resDir, 'layout/widget_prayer_bar.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mihrab_widget_bg"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_location_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Mihrab · İstanbul"
+                android:textColor="@color/mihrab_notif_text"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_next_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Sıradaki Vakit"
+                android:textColor="@color/mihrab_notif_active"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <Chronometer
+            android:id="@+id/widget_countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@color/mihrab_notif_active_bg"
+            android:paddingLeft="10dp"
+            android:paddingTop="4dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="4dp"
+            android:textColor="@color/mihrab_notif_active"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/mihrab_notif_divider" />
+
+${sixColumnPrayerRowXml}
+</LinearLayout>
+`,
+  'utf8'
+);
+
+fs.writeFileSync(
+  path.join(resDir, 'layout/widget_prayer_compact.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_compact_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/mihrab_widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/widget_compact_location"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="Mihrab · İstanbul"
+        android:textColor="@color/mihrab_notif_muted"
+        android:textSize="11sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_compact_next"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Öğle · 13:02"
+            android:textColor="@color/mihrab_notif_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <Chronometer
+            android:id="@+id/widget_compact_countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/mihrab_notif_active"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_compact_sub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="İkindi 16:15 · Akşam 18:45"
+        android:textColor="@color/mihrab_notif_muted"
+        android:textSize="11sp" />
+</LinearLayout>
+`,
+  'utf8'
+);
+
+ensureDir(path.join(resDir, 'xml'));
+fs.writeFileSync(
+  path.join(resDir, 'xml/mihrab_prayer_widget_info.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:minResizeWidth="220dp"
+    android:minResizeHeight="96dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_prayer_bar"
+    android:widgetCategory="home_screen|keyguard" />
+`,
+  'utf8'
+);
+
+fs.writeFileSync(
+  path.join(resDir, 'xml/mihrab_compact_widget_info.xml'),
+  `<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="140dp"
+    android:minHeight="64dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="56dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_prayer_compact"
+    android:widgetCategory="home_screen|keyguard" />
+`,
+  'utf8'
+);
+
 // 5. Java Yardımcı Sınıfı: PrayerBarHelper.java
 ensureDir(javaPkgDir);
 
@@ -361,11 +612,14 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.appwidget.AppWidgetManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.SystemClock;
 import android.widget.RemoteViews;
 
 import androidx.core.app.NotificationCompat;
@@ -448,8 +702,126 @@ public class PrayerBarHelper {
             } else if (hasNotificationPermission(context)) {
                 postPrayerBar(context, data);
             }
+            updateAllWidgets(context, data);
             scheduleAlarms(context, data);
         } catch (Exception ignored) {
+        }
+    }
+
+    public static boolean hasActiveWidgets(Context context) {
+        AppWidgetManager awm = AppWidgetManager.getInstance(context);
+        if (awm == null) return false;
+        int[] wideIds = awm.getAppWidgetIds(new ComponentName(context, MihrabPrayerWidgetProvider.class));
+        int[] compactIds = awm.getAppWidgetIds(new ComponentName(context, MihrabCompactWidgetProvider.class));
+        return (wideIds != null && wideIds.length > 0) || (compactIds != null && compactIds.length > 0);
+    }
+
+    public static void updateAllWidgets(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String raw = prefs.getString(KEY_SCHEDULE_JSON, null);
+        if (raw == null || raw.isEmpty()) return;
+        try {
+            updateAllWidgets(context, new JSONObject(raw));
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static void updateAllWidgets(Context context, JSONObject data) {
+        AppWidgetManager awm = AppWidgetManager.getInstance(context);
+        if (awm == null) return;
+
+        long now = System.currentTimeMillis();
+        String locationName = data.optString("locationName", "Mihrab");
+        String dateLabel = data.optString("dateLabel", "");
+        String hijriLabel = data.optString("hijriLabel", "");
+
+        JSONArray allPrayers = data.optJSONArray("prayers");
+        if (allPrayers == null || allPrayers.length() < 6) return;
+
+        JSONObject nextObj = null;
+        int nextIndex = -1;
+        for (int i = 0; i < allPrayers.length(); i++) {
+            JSONObject p = allPrayers.optJSONObject(i);
+            if (p != null && p.optLong("epochMs", 0L) > now) {
+                nextObj = p;
+                nextIndex = i;
+                break;
+            }
+        }
+        if (nextObj == null) {
+            nextObj = allPrayers.optJSONObject(allPrayers.length() - 1);
+            nextIndex = allPrayers.length() - 1;
+        }
+
+        int blockStart = 0;
+        if (allPrayers.length() >= 12 && nextIndex >= 6) {
+            blockStart = 6;
+        }
+
+        String imsak = getTimeAt(allPrayers, blockStart);
+        String gunes = getTimeAt(allPrayers, blockStart + 1);
+        String ogle = getTimeAt(allPrayers, blockStart + 2);
+        String ikindi = getTimeAt(allPrayers, blockStart + 3);
+        String aksam = getTimeAt(allPrayers, blockStart + 4);
+        String yatsi = getTimeAt(allPrayers, blockStart + 5);
+
+        String nextKey = nextObj != null ? nextObj.optString("key", "") : "";
+        String nextLabel = nextObj != null ? nextObj.optString("label", "") : "";
+        String nextTime = nextObj != null ? nextObj.optString("time", "") : "";
+        long nextEpochMs = nextObj != null ? nextObj.optLong("epochMs", now + 60000L) : (now + 60000L);
+        long remainingMs = Math.max(0L, nextEpochMs - now);
+        long chronoBase = SystemClock.elapsedRealtime() + remainingMs;
+
+        Intent launchIntent = new Intent(context, MainActivity.class);
+        launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent launchPi = PendingIntent.getActivity(
+            context,
+            2,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        String headerLocation = hijriLabel.isEmpty()
+            ? locationName + (dateLabel.isEmpty() ? "" : " · " + dateLabel)
+            : locationName + " · " + hijriLabel;
+
+        int[] wideIds = awm.getAppWidgetIds(new ComponentName(context, MihrabPrayerWidgetProvider.class));
+        if (wideIds != null && wideIds.length > 0) {
+            String pkg = context.getPackageName();
+            for (int widgetId : wideIds) {
+                RemoteViews views = new RemoteViews(pkg, R.layout.widget_prayer_bar);
+                views.setTextViewText(R.id.widget_location_date, headerLocation);
+                views.setTextViewText(R.id.widget_next_label, "Sıradaki: " + nextLabel + " (" + nextTime + ")");
+                views.setChronometer(R.id.widget_countdown, chronoBase, null, true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    views.setChronometerCountDown(R.id.widget_countdown, true);
+                }
+                populateSixColumns(context, views, imsak, gunes, ogle, ikindi, aksam, yatsi, nextKey);
+                views.setOnClickPendingIntent(R.id.widget_root, launchPi);
+                awm.updateAppWidget(widgetId, views);
+            }
+        }
+
+        int[] compactIds = awm.getAppWidgetIds(new ComponentName(context, MihrabCompactWidgetProvider.class));
+        if (compactIds != null && compactIds.length > 0) {
+            String pkg = context.getPackageName();
+            JSONObject afterNext = nextIndex + 1 < allPrayers.length() ? allPrayers.optJSONObject(nextIndex + 1) : null;
+            String afterText = afterNext != null
+                ? "Sonrası: " + afterNext.optString("label", "") + " " + afterNext.optString("time", "")
+                : "Öğle " + ogle + " · Akşam " + aksam;
+
+            for (int widgetId : compactIds) {
+                RemoteViews views = new RemoteViews(pkg, R.layout.widget_prayer_compact);
+                views.setTextViewText(R.id.widget_compact_location, locationName + (hijriLabel.isEmpty() ? "" : " · " + hijriLabel));
+                views.setTextViewText(R.id.widget_compact_next, nextLabel + " · " + nextTime);
+                views.setTextViewText(R.id.widget_compact_sub, afterText);
+                views.setChronometer(R.id.widget_compact_countdown, chronoBase, null, true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    views.setChronometerCountDown(R.id.widget_compact_countdown, true);
+                }
+                views.setOnClickPendingIntent(R.id.widget_compact_root, launchPi);
+                awm.updateAppWidget(widgetId, views);
+            }
         }
     }
 
@@ -662,7 +1034,8 @@ public class PrayerBarHelper {
             );
             am.cancel(refreshPi);
 
-            if (persistentEnabled && epochMs > now + 2000L) {
+            boolean hasWidgets = hasActiveWidgets(context);
+            if ((persistentEnabled || hasWidgets) && epochMs > now + 2000L) {
                 setAllowIdleAlarm(am, epochMs + 1000L, refreshPi);
             }
 
@@ -865,6 +1238,50 @@ public class MihrabNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    @PluginMethod
+    public void isPinWidgetSupported(PluginCall call) {
+        boolean supported = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            android.appwidget.AppWidgetManager awm =
+                android.appwidget.AppWidgetManager.getInstance(getContext());
+            supported = awm != null && awm.isRequestPinAppWidgetSupported();
+        }
+        JSObject ret = new JSObject();
+        ret.put("supported", supported);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestPinWidget(PluginCall call) {
+        String variant = call.getString("variant", "wide");
+        JSObject ret = new JSObject();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            ret.put("requested", false);
+            ret.put("reason", "unsupported_os");
+            call.resolve(ret);
+            return;
+        }
+        android.appwidget.AppWidgetManager awm =
+            android.appwidget.AppWidgetManager.getInstance(getContext());
+        if (awm == null || !awm.isRequestPinAppWidgetSupported()) {
+            ret.put("requested", false);
+            ret.put("reason", "unsupported_launcher");
+            call.resolve(ret);
+            return;
+        }
+
+        Class<?> providerCls = "compact".equals(variant)
+            ? MihrabCompactWidgetProvider.class
+            : MihrabPrayerWidgetProvider.class;
+        android.content.ComponentName provider =
+            new android.content.ComponentName(getContext(), providerCls);
+
+        boolean ok = awm.requestPinAppWidget(provider, null, null);
+        PrayerBarHelper.updateAllWidgets(getContext());
+        ret.put("requested", ok);
+        call.resolve(ret);
+    }
+
     private String resolvePermissionString() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             PermissionState ps = getPermissionState("notifications");
@@ -883,7 +1300,54 @@ public class MihrabNotificationPlugin extends Plugin {
   'utf8'
 );
 
-// 9. MainActivity.java içine MihrabNotificationPlugin kaydını ekle
+// 9. AppWidgetProvider Sınıfları (4x2 Tam Vakit Widget & 2x1 Kompakt Sayaç Widget)
+fs.writeFileSync(
+  path.join(javaPkgDir, 'MihrabPrayerWidgetProvider.java'),
+  `package com.mihrab.namazvakti;
+
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProvider;
+import android.content.Context;
+
+public class MihrabPrayerWidgetProvider extends AppWidgetProvider {
+    @Override
+    public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        PrayerBarHelper.updateAllWidgets(context);
+    }
+
+    @Override
+    public void onEnabled(Context context) {
+        PrayerBarHelper.applyFromStorage(context);
+    }
+}
+`,
+  'utf8'
+);
+
+fs.writeFileSync(
+  path.join(javaPkgDir, 'MihrabCompactWidgetProvider.java'),
+  `package com.mihrab.namazvakti;
+
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProvider;
+import android.content.Context;
+
+public class MihrabCompactWidgetProvider extends AppWidgetProvider {
+    @Override
+    public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        PrayerBarHelper.updateAllWidgets(context);
+    }
+
+    @Override
+    public void onEnabled(Context context) {
+        PrayerBarHelper.applyFromStorage(context);
+    }
+}
+`,
+  'utf8'
+);
+
+// 10. MainActivity.java içine MihrabNotificationPlugin kaydını ekle
 const mainActivityPath = path.join(javaPkgDir, 'MainActivity.java');
 fs.writeFileSync(
   mainActivityPath,
@@ -903,4 +1367,4 @@ public class MainActivity extends BridgeActivity {
   'utf8'
 );
 
-console.log('AndroidManifest.xml, bildirim düzenleri ve native MihrabNotificationPlugin başarıyla yapılandırıldı.');
+console.log('AndroidManifest.xml, bildirim düzenleri, ana ekran widgetları ve native MihrabNotificationPlugin başarıyla yapılandırıldı.');

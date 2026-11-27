@@ -13,4 +13,17 @@ contextBridge.exposeInMainWorld('mihrabDesktop', {
       ipcRenderer.send('mihrab:notify', { title, body });
     }
   },
+  openWidgetWindow: () => {
+    ipcRenderer.send('mihrab:open-widget');
+  },
+  closeWidgetWindow: () => {
+    ipcRenderer.send('mihrab:close-widget');
+  },
+  setWidgetAlwaysOnTop: (pinned) => {
+    ipcRenderer.send('mihrab:widget-pin', Boolean(pinned));
+  },
+  focusMainWindow: () => {
+    ipcRenderer.send('mihrab:focus-main');
+  },
 });
+

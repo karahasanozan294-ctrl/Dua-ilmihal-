@@ -29,6 +29,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 interface PdfBookReaderProps {
   mode?: 'library' | 'embedded';
   embeddedBook?: BuiltInPdfBook;
+  initialPage?: number;
 }
 
 type ActivePdfDescriptor =
@@ -56,6 +57,7 @@ function saveBookPage(bookId: string, page: number) {
 export function PdfBookReader({
   mode = 'library',
   embeddedBook = BUILTIN_PDF_BOOKS[0],
+  initialPage,
 }: PdfBookReaderProps) {
   const [customBooks, setCustomBooks] = useState<StoredPdfBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string>(
@@ -167,10 +169,9 @@ export function PdfBookReader({
         loadedDoc = doc;
         setPdfDoc(doc);
         setNumPages(doc.numPages);
-        const restored = Math.min(
-          Math.max(1, readSavedPage(activeId)),
-          doc.numPages
-        );
+        const target =
+          initialPage && initialPage >= 1 ? initialPage : readSavedPage(activeId);
+        const restored = Math.min(Math.max(1, target), doc.numPages);
         setCurrentPage(restored);
         setPageInput(String(restored));
         setIsLoadingDoc(false);
@@ -200,6 +201,15 @@ export function PdfBookReader({
       }
     };
   }, [activeDescriptor, activeId]);
+
+  // Jump if caller supplies an updated initialPage while document is loaded
+  useEffect(() => {
+    if (!isLoadingDoc && numPages > 0 && initialPage && initialPage >= 1) {
+      const bounded = Math.min(initialPage, numPages);
+      setCurrentPage(bounded);
+      setPageInput(String(bounded));
+    }
+  }, [initialPage, isLoadingDoc, numPages]);
 
   // Persist current page
   useEffect(() => {

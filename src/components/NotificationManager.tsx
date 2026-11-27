@@ -2,6 +2,7 @@ import {
   Bell,
   BellRing,
   Check,
+  LayoutGrid,
   Send,
   Volume2,
   VolumeX,
@@ -29,6 +30,7 @@ interface NotificationManagerProps {
   onRequestPermission: () => Promise<void>;
   onSendTestNotification: () => void;
   onSendSummaryNotification: () => void;
+  onOpenWidgetModal?: () => void;
 }
 
 const LEAD_OPTIONS: { value: 0 | 10 | 15 | 30; label: string }[] = [
@@ -48,6 +50,7 @@ export function NotificationManager({
   onRequestPermission,
   onSendTestNotification,
   onSendSummaryNotification,
+  onOpenWidgetModal,
 }: NotificationManagerProps) {
   const togglePrayer = (key: PrayerKey) => {
     onUpdateSettings({
@@ -96,6 +99,17 @@ export function NotificationManager({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenWidgetModal && (
+              <button
+                type="button"
+                onClick={onOpenWidgetModal}
+                className="inline-flex min-h-[42px] items-center gap-2 rounded-lg border border-[#DDD7C9] bg-[#FAF9F6] px-3.5 py-2 text-xs font-medium text-[#171A19] hover:border-[#0F6E56] dark:border-[#243242] dark:bg-[#0D141C] dark:text-[#EDF2F0] whitespace-nowrap"
+              >
+                <LayoutGrid className="h-3.5 w-3.5 text-[#0F6E56] dark:text-[#34D399]" />
+                <span>Widget Ekle</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onSendTestNotification}

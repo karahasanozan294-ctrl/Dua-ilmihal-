@@ -25,6 +25,10 @@ interface MihrabNativePlugin {
     title: string;
     body: string;
   }): Promise<{ sent: boolean }>;
+  isPinWidgetSupported(): Promise<{ supported: boolean }>;
+  requestPinWidget(options: {
+    variant: 'wide' | 'compact';
+  }): Promise<{ requested: boolean; reason?: string }>;
 }
 
 const MihrabNativeNotifications =
@@ -37,6 +41,10 @@ declare global {
       platform: string;
       updateTraySummary: (summary: string) => void;
       showNotification: (title: string, body: string) => void;
+      openWidgetWindow?: () => void;
+      closeWidgetWindow?: () => void;
+      setWidgetAlwaysOnTop?: (pinned: boolean) => void;
+      focusMainWindow?: () => void;
     };
   }
 }
@@ -48,6 +56,65 @@ export function isDesktopWindows(): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+export function openDesktopWidgetWindow(): boolean {
+  try {
+    if (typeof window !== 'undefined' && window.mihrabDesktop?.openWidgetWindow) {
+      window.mihrabDesktop.openWidgetWindow();
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function closeDesktopWidgetWindow(): void {
+  try {
+    window.mihrabDesktop?.closeWidgetWindow?.();
+  } catch {
+    // Ignore bridge errors
+  }
+}
+
+export function setDesktopWidgetAlwaysOnTop(pinned: boolean): void {
+  try {
+    window.mihrabDesktop?.setWidgetAlwaysOnTop?.(pinned);
+  } catch {
+    // Ignore bridge errors
+  }
+}
+
+export function focusDesktopMainWindow(): void {
+  try {
+    window.mihrabDesktop?.focusMainWindow?.();
+  } catch {
+    // Ignore bridge errors
+  }
+}
+
+export async function isAndroidPinWidgetSupported(): Promise<boolean> {
+  if (!isNativeAndroid()) return false;
+  try {
+    const res = await MihrabNativeNotifications.isPinWidgetSupported();
+    return Boolean(res?.supported);
+  } catch {
+    return false;
+  }
+}
+
+export async function requestPinAndroidWidget(
+  variant: 'wide' | 'compact'
+): Promise<{ requested: boolean; reason?: string }> {
+  if (!isNativeAndroid()) {
+    return { requested: false, reason: 'not_android' };
+  }
+  try {
+    return await MihrabNativeNotifications.requestPinWidget({ variant });
+  } catch {
+    return { requested: false, reason: 'bridge_error' };
   }
 }
 

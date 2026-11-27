@@ -55,6 +55,7 @@ const DIST_DIR = path.resolve(__dirname, '../dist');
 const ICON_PNG = path.join(__dirname, 'icon.png');
 
 let mainWindow = null;
+let widgetWindow = null;
 let tray = null;
 let isQuitting = false;
 
@@ -204,6 +205,41 @@ function createWindow() {
   });
 }
 
+function createWidgetWindow() {
+  if (widgetWindow) {
+    if (widgetWindow.isMinimized()) widgetWindow.restore();
+    widgetWindow.show();
+    widgetWindow.focus();
+    return;
+  }
+
+  widgetWindow = new BrowserWindow({
+    width: 348,
+    height: 236,
+    minWidth: 280,
+    minHeight: 196,
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    title: 'Mihrab Mini Widget',
+    icon: ICON_PNG,
+    backgroundColor: '#F7F5F0',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  widgetWindow.loadURL('mihrab://app/index.html?widget=1');
+
+  widgetWindow.on('closed', () => {
+    widgetWindow = null;
+  });
+}
+
 function createTray() {
   try {
     const img = nativeImage.createFromPath(ICON_PNG);
@@ -220,6 +256,12 @@ function createTray() {
           } else {
             createWindow();
           }
+        },
+      },
+      {
+        label: 'Masaüstü Mini Widget’ı Aç',
+        click: () => {
+          createWidgetWindow();
         },
       },
       {
@@ -285,6 +327,32 @@ app.whenReady().then(() => {
       }
     });
     notif.show();
+  });
+
+  ipcMain.on('mihrab:open-widget', () => {
+    createWidgetWindow();
+  });
+
+  ipcMain.on('mihrab:close-widget', () => {
+    if (widgetWindow) {
+      widgetWindow.close();
+    }
+  });
+
+  ipcMain.on('mihrab:widget-pin', (_event, pinned) => {
+    if (widgetWindow) {
+      widgetWindow.setAlwaysOnTop(Boolean(pinned));
+    }
+  });
+
+  ipcMain.on('mihrab:focus-main', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
   });
 });
 

@@ -16,12 +16,14 @@ interface DailyWisdomSectionProps {
   onOpenQuran?: () => void;
   onOpenTefsir?: () => void;
   onOpenRiyaz?: () => void;
+  onOpenRamuz?: () => void;
 }
 
 export function DailyWisdomSection({
   onOpenQuran,
   onOpenTefsir,
   onOpenRiyaz,
+  onOpenRamuz,
 }: DailyWisdomSectionProps) {
   const dayIdx = getDayOfYearIndex(new Date());
   const [ayetIdx, setAyetIdx] = useState<number>(
@@ -218,6 +220,15 @@ export function DailyWisdomSection({
                 className="min-h-[36px] rounded-lg px-2.5 py-1 font-medium text-[#0F6E56] hover:bg-[#0F6E56]/8 dark:text-[#34D399] dark:hover:bg-[#10B981]/12 whitespace-nowrap shrink-0"
               >
                 Riyâzu’s-Sâlihîn
+              </button>
+            )}
+            {onOpenRamuz && (
+              <button
+                type="button"
+                onClick={onOpenRamuz}
+                className="min-h-[36px] rounded-lg px-2.5 py-1 font-medium text-[#575C59] hover:bg-[#F1EEE7] hover:text-[#171A19] dark:text-[#9CA7B0] dark:hover:bg-[#1A2532] whitespace-nowrap shrink-0"
+              >
+                Râmûzü’l-Ehâdîs
               </button>
             )}
             <button
