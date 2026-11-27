@@ -268,20 +268,20 @@ export function WatchSupportModal({
           {guideTab === 'wearos' ? (
             <div className="rounded-xl border border-[#EEEAE0] bg-[#FAF9F6] p-4 text-xs text-[#575C59] dark:border-[#1E2936] dark:bg-[#0D141C] dark:text-[#9CA7B0] space-y-2.5">
               <div className="font-semibold text-[#171A19] dark:text-[#EDF2F0]">
-                Samsung Galaxy Watch 4/5/6/7/Ultra, Pixel Watch, Xiaomi Watch 2, TicWatch
+                Samsung Galaxy Watch 4/5/6/7/8, Pixel Watch, Xiaomi Watch 2, TicWatch
               </div>
               <p className="leading-relaxed">
-                Mihrab’ın <strong>Mihrab-Android.apk</strong> paketi Wear OS saatleri yerleşik olarak tanır ve tek başına (telefon yanında olmadan dahi) internetsiz çalışır. Saate kurduğunuzda ekranı otomatik algılayarak yuvarlak saat arayüzüne geçer.
+                Mihrab’ın <strong>Mihrab-Android.apk</strong> paketi Wear OS saatlerde <strong>Android WebView gerektirmeden</strong> doğrudan yerel (native) saat arayüzü ile açılır ve telefon yanınızda olmasa bile internetsiz çalışır.
               </p>
               <ol className="list-decimal pl-4 space-y-1.5 leading-relaxed">
                 <li>
                   Saatte <strong>Ayarlar &gt; Saat Hakkında &gt; Yazılım Bilgileri</strong> bölümünden <em>Yapım Numarasına</em> 7 kez dokunup Geliştirici Seçeneklerini ve <strong>ADB / Kablosuz Hata Ayıklamayı</strong> açın.
                 </li>
                 <li>
-                  Telefonunuza Play Store’dan ücretsiz <strong>Bugjaeger</strong> veya <strong>Wear Installer 2</strong> kurup aynı Wi-Fi üzerinden saate bağlanın ve <strong>Mihrab-Android.apk</strong> dosyasını gönderin.
+                  Telefonunuza <strong>Bugjaeger</strong> veya <strong>Wear Installer 2</strong> kurup saate bağlanın ve güncel <strong>Mihrab-Android.apk</strong> dosyasını gönderin.
                 </li>
                 <li>
-                  Saatin tarayıcısından (Samsung Internet) kullanmak isterseniz web bağlantısının sonuna <span className="font-mono-tabular font-semibold text-[#171A19] dark:text-[#EDF2F0]">?watch=1</span> ekleyerek de açabilirsiniz.
+                  Saat kadranında şehir adına dokunarak 81 il veya <strong>GPS ile Konum Bul</strong> özelliğini seçebilirsiniz.
                 </li>
               </ol>
             </div>

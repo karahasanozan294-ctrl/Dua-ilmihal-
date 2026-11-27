@@ -129,6 +129,33 @@ if (!manifest.includes('PrayerAlarmReceiver') || !manifest.includes('MihrabPraye
   }
 }
 
+if (!manifest.includes('LaunchRouterActivity')) {
+  manifest = manifest.replace(
+    /<intent-filter>[\s\S]*?android\.intent\.category\.LAUNCHER[\s\S]*?<\/intent-filter>/,
+    ''
+  );
+  manifest = manifest.replace(
+    '</application>',
+    `
+        <activity
+            android:name=".LaunchRouterActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".WearWatchActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+    </application>`
+  );
+}
+
 fs.writeFileSync(manifestPath, manifest, 'utf8');
 
 // 2. Bildirim İkonu (Monokrom Beyaz Vektör — Android Durum Çubuğu Standardı)
@@ -801,7 +828,7 @@ public class PrayerBarHelper {
         long remainingMs = Math.max(0L, nextEpochMs - now);
         long chronoBase = SystemClock.elapsedRealtime() + remainingMs;
 
-        Intent launchIntent = new Intent(context, MainActivity.class);
+        Intent launchIntent = new Intent(context, LaunchRouterActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent launchPi = PendingIntent.getActivity(
             context,
@@ -914,7 +941,7 @@ public class PrayerBarHelper {
         populateSixColumns(context, compactView, imsak, gunes, ogle, ikindi, aksam, yatsi, nextKey);
         populateSixColumns(context, expandedView, imsak, gunes, ogle, ikindi, aksam, yatsi, nextKey);
 
-        Intent launchIntent = new Intent(context, MainActivity.class);
+        Intent launchIntent = new Intent(context, LaunchRouterActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(
             context,
@@ -1003,7 +1030,7 @@ public class PrayerBarHelper {
         ensureChannels(context);
         if (!hasNotificationPermission(context)) return;
 
-        Intent launchIntent = new Intent(context, MainActivity.class);
+        Intent launchIntent = new Intent(context, LaunchRouterActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(
             context,
@@ -1037,7 +1064,7 @@ public class PrayerBarHelper {
         ensureChannels(context);
         if (!hasNotificationPermission(context)) return;
 
-        Intent launchIntent = new Intent(context, MainActivity.class);
+        Intent launchIntent = new Intent(context, LaunchRouterActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(
             context,
@@ -1487,4 +1514,1468 @@ public class MainActivity extends BridgeActivity {
   'utf8'
 );
 
-console.log('AndroidManifest.xml, bildirim düzenleri, ana ekran widgetları ve native MihrabNotificationPlugin başarıyla yapılandırıldı.');
+// 11. LaunchRouterActivity.java: Saat (Wear OS) veya WebView yoksa native WearWatchActivity açar
+fs.writeFileSync(
+  path.join(javaPkgDir, 'LaunchRouterActivity.java'),
+  `package com.mihrab.namazvakti;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.os.Build;
+import android.os.Bundle;
+import android.webkit.WebView;
+
+public class LaunchRouterActivity extends Activity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        boolean hasWatchFeature = getPackageManager().hasSystemFeature(PackageManager.FEATURE_WATCH);
+        int uiModeType = getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK;
+        boolean isWatchUi = (uiModeType == Configuration.UI_MODE_TYPE_WATCH);
+
+        boolean hasWebView = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                PackageInfo pkg = WebView.getCurrentWebViewPackage();
+                hasWebView = (pkg != null);
+            } catch (Throwable t) {
+                hasWebView = false;
+            }
+        }
+
+        Class<?> target = (hasWatchFeature || isWatchUi || !hasWebView)
+            ? WearWatchActivity.class
+            : MainActivity.class;
+
+        Intent next = new Intent(this, target);
+        next.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        startActivity(next);
+        finish();
+    }
+}
+`,
+  'utf8'
+);
+
+// 12. WearPrayerCalculator.java: Wear OS saatler için WebView'sız tam çevrimdışı Diyanet namaz vakti & kıble motoru
+fs.writeFileSync(
+  path.join(javaPkgDir, 'WearPrayerCalculator.java'),
+  `package com.mihrab.namazvakti;
+
+import android.content.Context;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+public class WearPrayerCalculator {
+
+    public static class WatchCity {
+        public final String id;
+        public final String name;
+        public final double lat;
+        public final double lon;
+        public final String tz;
+
+        public WatchCity(String id, String name, double lat, double lon, String tz) {
+            this.id = id;
+            this.name = name;
+            this.lat = lat;
+            this.lon = lon;
+            this.tz = tz;
+        }
+    }
+
+    public static class PrayerEntry {
+        public final String key;
+        public final String label;
+        public final long epochMs;
+        public final String formattedTime;
+
+        public PrayerEntry(String key, String label, long epochMs, String formattedTime) {
+            this.key = key;
+            this.label = label;
+            this.epochMs = epochMs;
+            this.formattedTime = formattedTime;
+        }
+    }
+
+    public static class DaySchedule {
+        public final PrayerEntry[] prayers;
+        public final String sabah;
+        public final String teheccud;
+        public final double qiblaAngle;
+        public final String qiblaDirection;
+        public final int distanceKm;
+
+        public DaySchedule(
+            PrayerEntry[] prayers,
+            String sabah,
+            String teheccud,
+            double qiblaAngle,
+            String qiblaDirection,
+            int distanceKm
+        ) {
+            this.prayers = prayers;
+            this.sabah = sabah;
+            this.teheccud = teheccud;
+            this.qiblaAngle = qiblaAngle;
+            this.qiblaDirection = qiblaDirection;
+            this.distanceKm = distanceKm;
+        }
+    }
+
+    private static final String TR_TZ = "Europe/Istanbul";
+
+    public static final WatchCity[] CITIES = new WatchCity[] {
+        new WatchCity("tr-istanbul", "İstanbul", 41.0082, 28.9784, TR_TZ),
+        new WatchCity("tr-ankara", "Ankara", 39.9334, 32.8597, TR_TZ),
+        new WatchCity("tr-izmir", "İzmir", 38.4237, 27.1428, TR_TZ),
+        new WatchCity("tr-bursa", "Bursa", 40.1885, 29.0610, TR_TZ),
+        new WatchCity("tr-antalya", "Antalya", 36.8969, 30.7133, TR_TZ),
+        new WatchCity("tr-konya", "Konya", 37.8746, 32.4932, TR_TZ),
+        new WatchCity("tr-adana", "Adana", 37.0000, 35.3213, TR_TZ),
+        new WatchCity("tr-gaziantep", "Gaziantep", 37.0662, 37.3833, TR_TZ),
+        new WatchCity("tr-sanliurfa", "Şanlıurfa", 37.1674, 38.7955, TR_TZ),
+        new WatchCity("tr-kocaeli", "Kocaeli", 40.7654, 29.9408, TR_TZ),
+        new WatchCity("tr-mersin", "Mersin", 36.8121, 34.6415, TR_TZ),
+        new WatchCity("tr-diyarbakir", "Diyarbakır", 37.9144, 40.2306, TR_TZ),
+        new WatchCity("tr-hatay", "Hatay", 36.2023, 36.1613, TR_TZ),
+        new WatchCity("tr-manisa", "Manisa", 38.6191, 27.4289, TR_TZ),
+        new WatchCity("tr-kayseri", "Kayseri", 38.7312, 35.4787, TR_TZ),
+        new WatchCity("tr-samsun", "Samsun", 41.2867, 36.3300, TR_TZ),
+        new WatchCity("tr-balikesir", "Balıkesir", 39.6484, 27.8826, TR_TZ),
+        new WatchCity("tr-kahramanmaras", "Kahramanmaraş", 37.5858, 36.9371, TR_TZ),
+        new WatchCity("tr-van", "Van", 38.5012, 43.3730, TR_TZ),
+        new WatchCity("tr-aydin", "Aydın", 37.8560, 27.8416, TR_TZ),
+        new WatchCity("tr-tekirdag", "Tekirdağ", 40.9781, 27.5117, TR_TZ),
+        new WatchCity("tr-sakarya", "Sakarya", 40.7569, 30.3783, TR_TZ),
+        new WatchCity("tr-denizli", "Denizli", 37.7765, 29.0864, TR_TZ),
+        new WatchCity("tr-mugla", "Muğla", 37.2153, 28.3636, TR_TZ),
+        new WatchCity("tr-eskisehir", "Eskişehir", 39.7767, 30.5206, TR_TZ),
+        new WatchCity("tr-mardin", "Mardin", 37.3212, 40.7245, TR_TZ),
+        new WatchCity("tr-trabzon", "Trabzon", 41.0027, 39.7168, TR_TZ),
+        new WatchCity("tr-malatya", "Malatya", 38.3552, 38.3095, TR_TZ),
+        new WatchCity("tr-ordu", "Ordu", 40.9839, 37.8764, TR_TZ),
+        new WatchCity("tr-erzurum", "Erzurum", 39.9000, 41.2700, TR_TZ),
+        new WatchCity("tr-afyonkarahisar", "Afyonkarahisar", 38.7507, 30.5567, TR_TZ),
+        new WatchCity("tr-sivas", "Sivas", 39.7477, 37.0179, TR_TZ),
+        new WatchCity("tr-adiyaman", "Adıyaman", 37.7648, 38.2786, TR_TZ),
+        new WatchCity("tr-tokat", "Tokat", 40.3167, 36.5500, TR_TZ),
+        new WatchCity("tr-elazig", "Elazığ", 38.6810, 39.2264, TR_TZ),
+        new WatchCity("tr-zonguldak", "Zonguldak", 41.4564, 31.7987, TR_TZ),
+        new WatchCity("tr-batman", "Batman", 37.8812, 41.1351, TR_TZ),
+        new WatchCity("tr-kutahya", "Kütahya", 39.4167, 29.9833, TR_TZ),
+        new WatchCity("tr-canakkale", "Çanakkale", 40.1553, 26.4142, TR_TZ),
+        new WatchCity("tr-osmaniye", "Osmaniye", 37.0742, 36.2478, TR_TZ),
+        new WatchCity("tr-corum", "Çorum", 40.5506, 34.9556, TR_TZ),
+        new WatchCity("tr-sirnak", "Şırnak", 37.5164, 42.4611, TR_TZ),
+        new WatchCity("tr-giresun", "Giresun", 40.9128, 38.3895, TR_TZ),
+        new WatchCity("tr-isparta", "Isparta", 37.7648, 30.5566, TR_TZ),
+        new WatchCity("tr-agri", "Ağrı", 39.7191, 43.0503, TR_TZ),
+        new WatchCity("tr-yozgat", "Yozgat", 39.8181, 34.8147, TR_TZ),
+        new WatchCity("tr-edirne", "Edirne", 41.6771, 26.5557, TR_TZ),
+        new WatchCity("tr-aksaray", "Aksaray", 38.3687, 34.0370, TR_TZ),
+        new WatchCity("tr-duzce", "Düzce", 40.8438, 31.1565, TR_TZ),
+        new WatchCity("tr-kastamonu", "Kastamonu", 41.3887, 33.7827, TR_TZ),
+        new WatchCity("tr-usak", "Uşak", 38.6823, 29.4082, TR_TZ),
+        new WatchCity("tr-kirklareli", "Kırklareli", 41.7333, 27.2167, TR_TZ),
+        new WatchCity("tr-nigde", "Niğde", 37.9667, 34.6833, TR_TZ),
+        new WatchCity("tr-bitlis", "Bitlis", 38.4006, 42.1095, TR_TZ),
+        new WatchCity("tr-rize", "Rize", 41.0201, 40.5234, TR_TZ),
+        new WatchCity("tr-amasya", "Amasya", 40.6499, 35.8353, TR_TZ),
+        new WatchCity("tr-siirt", "Siirt", 37.9333, 41.9500, TR_TZ),
+        new WatchCity("tr-bolu", "Bolu", 40.7350, 31.6061, TR_TZ),
+        new WatchCity("tr-nevsehir", "Nevşehir", 38.6244, 34.7239, TR_TZ),
+        new WatchCity("tr-mus", "Muş", 38.7432, 41.5064, TR_TZ),
+        new WatchCity("tr-yalova", "Yalova", 40.6500, 29.2667, TR_TZ),
+        new WatchCity("tr-bingol", "Bingöl", 38.8854, 40.4966, TR_TZ),
+        new WatchCity("tr-kirikkale", "Kırıkkale", 39.8468, 33.5153, TR_TZ),
+        new WatchCity("tr-hakkari", "Hakkari", 37.5833, 43.7333, TR_TZ),
+        new WatchCity("tr-kars", "Kars", 40.6167, 43.1000, TR_TZ),
+        new WatchCity("tr-burdur", "Burdur", 37.7203, 30.2908, TR_TZ),
+        new WatchCity("tr-karaman", "Karaman", 37.1759, 33.2287, TR_TZ),
+        new WatchCity("tr-karabuk", "Karabük", 41.2061, 32.6204, TR_TZ),
+        new WatchCity("tr-kirsehir", "Kırşehir", 39.1425, 34.1709, TR_TZ),
+        new WatchCity("tr-erzincan", "Erzincan", 39.7500, 39.5000, TR_TZ),
+        new WatchCity("tr-bilecik", "Bilecik", 40.1451, 29.9799, TR_TZ),
+        new WatchCity("tr-sinop", "Sinop", 42.0231, 35.1531, TR_TZ),
+        new WatchCity("tr-igdir", "Iğdır", 39.9167, 44.0333, TR_TZ),
+        new WatchCity("tr-bartin", "Bartın", 41.6344, 32.3375, TR_TZ),
+        new WatchCity("tr-cankiri", "Çankırı", 40.6013, 33.6134, TR_TZ),
+        new WatchCity("tr-artvin", "Artvin", 41.1828, 41.8183, TR_TZ),
+        new WatchCity("tr-kilis", "Kilis", 36.7184, 37.1212, TR_TZ),
+        new WatchCity("tr-gumushane", "Gümüşhane", 40.4600, 39.4814, TR_TZ),
+        new WatchCity("tr-ardahan", "Ardahan", 41.1105, 42.7022, TR_TZ),
+        new WatchCity("tr-tunceli", "Tunceli", 39.1079, 39.5401, TR_TZ),
+        new WatchCity("tr-bayburt", "Bayburt", 40.2552, 40.2249, TR_TZ),
+        new WatchCity("sa-makkah", "Mekke", 21.3891, 39.8579, "Asia/Riyadh"),
+        new WatchCity("sa-madinah", "Medine", 24.5247, 39.5692, "Asia/Riyadh"),
+        new WatchCity("ps-jerusalem", "Kudüs", 31.7683, 35.2137, "Asia/Jerusalem"),
+        new WatchCity("cy-nicosia", "Lefkoşa", 35.1856, 33.3823, "Asia/Nicosia"),
+        new WatchCity("az-baku", "Bakü", 40.4093, 49.8671, "Asia/Baku"),
+        new WatchCity("de-berlin", "Berlin", 52.5200, 13.4050, "Europe/Berlin"),
+        new WatchCity("de-munich", "Münih", 48.1351, 11.5820, "Europe/Berlin"),
+        new WatchCity("de-cologne", "Köln", 50.9375, 6.9603, "Europe/Berlin"),
+        new WatchCity("gb-london", "Londra", 51.5072, -0.1276, "Europe/London"),
+        new WatchCity("fr-paris", "Paris", 48.8566, 2.3522, "Europe/Paris"),
+        new WatchCity("nl-amsterdam", "Amsterdam", 52.3676, 4.9041, "Europe/Amsterdam"),
+        new WatchCity("at-vienna", "Viyana", 48.2082, 16.3738, "Europe/Vienna")
+    };
+
+    public static WatchCity findNearestCity(double lat, double lon) {
+        WatchCity best = CITIES[0];
+        double bestDist = Double.MAX_VALUE;
+        for (WatchCity c : CITIES) {
+            double dLat = c.lat - lat;
+            double dLon = c.lon - lon;
+            double d = dLat * dLat + dLon * dLon;
+            if (d < bestDist) {
+                bestDist = d;
+                best = c;
+            }
+        }
+        return best;
+    }
+
+    public static WatchCity findById(String id) {
+        if (id == null) return CITIES[0];
+        for (WatchCity c : CITIES) {
+            if (id.equals(c.id)) return c;
+        }
+        return CITIES[0];
+    }
+
+    public static DaySchedule calculateDay(WatchCity city, long dayTimestampMs) {
+        TimeZone tz = TimeZone.getTimeZone(city.tz);
+        Calendar cal = Calendar.getInstance(tz);
+        cal.setTimeInMillis(dayTimestampMs);
+        int year = cal.get(Calendar.YEAR);
+        int month = cal.get(Calendar.MONTH) + 1;
+        int day = cal.get(Calendar.DAY_OF_MONTH);
+
+        double jd0 = julianDate(year, month, day);
+        double noonUtHours = computeTransitUt(jd0 + 0.5, city.lon);
+
+        double fajrUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -18.0, false);
+        double sunriseUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -0.8333, false);
+        double dhuhrUt = computeTransitUt(jd0 + noonUtHours / 24.0, city.lon);
+        double asrUt = computeAsrUt(jd0, noonUtHours, city.lat, city.lon, 1.0);
+        double maghribUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -0.8333, true);
+        double ishaUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -17.0, true);
+
+        // Diyanet (Turkey) resmi temkin düzeltmeleri (dakika)
+        long utcMidnightMs = utcMidnightMillis(year, month, day);
+        long fajrMs = roundMinuteMs(utcMidnightMs, fajrUt, 0);
+        long sunriseMs = roundMinuteMs(utcMidnightMs, sunriseUt, -7);
+        long dhuhrMs = roundMinuteMs(utcMidnightMs, dhuhrUt, 5);
+        long asrMs = roundMinuteMs(utcMidnightMs, asrUt, 4);
+        long maghribMs = roundMinuteMs(utcMidnightMs, maghribUt, 7);
+        long ishaMs = roundMinuteMs(utcMidnightMs, ishaUt, 0);
+
+        PrayerEntry[] entries = new PrayerEntry[] {
+            new PrayerEntry("imsak", "İmsak", fajrMs, formatHHMM(fajrMs, tz)),
+            new PrayerEntry("gunes", "Güneş", sunriseMs, formatHHMM(sunriseMs, tz)),
+            new PrayerEntry("ogle", "Öğle", dhuhrMs, formatHHMM(dhuhrMs, tz)),
+            new PrayerEntry("ikindi", "İkindi", asrMs, formatHHMM(asrMs, tz)),
+            new PrayerEntry("aksam", "Akşam", maghribMs, formatHHMM(maghribMs, tz)),
+            new PrayerEntry("yatsi", "Yatsı", ishaMs, formatHHMM(ishaMs, tz))
+        };
+
+        long nightSpan = (fajrMs + 86_400_000L) - maghribMs;
+        long teheccudMs = (fajrMs + 86_400_000L) - (nightSpan / 3L);
+        long sabahMs = fajrMs + 20L * 60_000L;
+
+        double qiblaAngle = computeQiblaAngle(city.lat, city.lon);
+        String qiblaDir = compassDirection(qiblaAngle);
+        int distKm = haversineKm(city.lat, city.lon, 21.4225, 39.8262);
+
+        return new DaySchedule(
+            entries,
+            formatHHMM(sabahMs, tz),
+            formatHHMM(teheccudMs, tz),
+            qiblaAngle,
+            qiblaDir,
+            distKm
+        );
+    }
+
+    public static void syncToPrayerBarHelper(Context context, WatchCity city) {
+        try {
+            long now = System.currentTimeMillis();
+            DaySchedule today = calculateDay(city, now);
+            DaySchedule tomorrow = calculateDay(city, now + 86_400_000L);
+
+            JSONArray arr = new JSONArray();
+            for (PrayerEntry e : today.prayers) {
+                JSONObject o = new JSONObject();
+                o.put("key", e.key);
+                o.put("label", e.label);
+                o.put("time", e.formattedTime);
+                o.put("epochMs", e.epochMs);
+                arr.put(o);
+            }
+            for (PrayerEntry e : tomorrow.prayers) {
+                JSONObject o = new JSONObject();
+                o.put("key", e.key);
+                o.put("label", e.label);
+                o.put("time", e.formattedTime);
+                o.put("epochMs", e.epochMs);
+                arr.put(o);
+            }
+
+            SimpleDateFormat df = new SimpleDateFormat("d MMM", new Locale("tr", "TR"));
+            df.setTimeZone(TimeZone.getTimeZone(city.tz));
+
+            JSONObject enabled = new JSONObject();
+            enabled.put("imsak", true);
+            enabled.put("gunes", false);
+            enabled.put("ogle", true);
+            enabled.put("ikindi", true);
+            enabled.put("aksam", true);
+            enabled.put("yatsi", true);
+
+            JSONObject payload = new JSONObject();
+            payload.put("persistentEnabled", false);
+            payload.put("alertsEnabled", true);
+            payload.put("watchAlertsEnabled", true);
+            payload.put("soundEnabled", false);
+            payload.put("leadMinutes", 0);
+            payload.put("locationName", city.name);
+            payload.put("dateLabel", df.format(new Date(now)));
+            payload.put("hijriLabel", "");
+            payload.put("prayers", arr);
+            payload.put("enabledPrayers", enabled);
+
+            PrayerBarHelper.saveAndApplySchedule(context, payload);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static String formatHHMM(long epochMs, TimeZone tz) {
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm", Locale.US);
+        sdf.setTimeZone(tz);
+        return sdf.format(new Date(epochMs));
+    }
+
+    private static long utcMidnightMillis(int year, int month, int day) {
+        Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        c.clear();
+        c.set(year, month - 1, day, 0, 0, 0);
+        return c.getTimeInMillis();
+    }
+
+    private static long roundMinuteMs(long utcMidnightMs, double utHours, int offsetMin) {
+        if (Double.isNaN(utHours)) utHours = 12.0;
+        long rawMs = utcMidnightMs + Math.round(utHours * 3600.0 * 1000.0) + (offsetMin * 60_000L);
+        return Math.round(rawMs / 60_000.0) * 60_000L;
+    }
+
+    private static double julianDate(int y, int m, int d) {
+        if (m <= 2) {
+            y -= 1;
+            m += 12;
+        }
+        int A = y / 100;
+        int B = 2 - A + (A / 4);
+        return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + B - 1524.5;
+    }
+
+    private static double[] solarCoords(double jd) {
+        double D = jd - 2451545.0;
+        double g = Math.toRadians(normalizeDeg(357.529 + 0.98560028 * D));
+        double q = normalizeDeg(280.459 + 0.98564736 * D);
+        double L = Math.toRadians(normalizeDeg(q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2.0 * g)));
+        double e = Math.toRadians(23.439 - 0.00000036 * D);
+        double ra = Math.toDegrees(Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L))) / 15.0;
+        ra = normalizeHours(ra);
+        double decl = Math.asin(Math.sin(e) * Math.sin(L));
+        double eqT = (q / 15.0) - ra;
+        if (eqT > 12.0) eqT -= 24.0;
+        if (eqT < -12.0) eqT += 24.0;
+        return new double[] { decl, eqT };
+    }
+
+    private static double computeTransitUt(double jdApprox, double lon) {
+        double[] sc = solarCoords(jdApprox);
+        return 12.0 - (lon / 15.0) - sc[1];
+    }
+
+    private static double computeSunAngleTimeUt(
+        double jd0,
+        double approxNoonUt,
+        double latDeg,
+        double lonDeg,
+        double altDeg,
+        boolean afterNoon
+    ) {
+        double t = approxNoonUt + (afterNoon ? 4.0 : -4.0);
+        for (int iter = 0; iter < 2; iter++) {
+            double[] sc = solarCoords(jd0 + t / 24.0);
+            double decl = sc[0];
+            double eqT = sc[1];
+            double latRad = Math.toRadians(latDeg);
+            double altRad = Math.toRadians(altDeg);
+            double cosH = (Math.sin(altRad) - Math.sin(latRad) * Math.sin(decl))
+                / (Math.cos(latRad) * Math.cos(decl));
+            if (cosH > 1.0) cosH = 1.0;
+            if (cosH < -1.0) cosH = -1.0;
+            double H = Math.toDegrees(Math.acos(cosH)) / 15.0;
+            double transit = 12.0 - (lonDeg / 15.0) - eqT;
+            t = afterNoon ? (transit + H) : (transit - H);
+        }
+        return t;
+    }
+
+    private static double computeAsrUt(
+        double jd0,
+        double approxNoonUt,
+        double latDeg,
+        double lonDeg,
+        double shadowFactor
+    ) {
+        double t = approxNoonUt + 3.5;
+        for (int iter = 0; iter < 2; iter++) {
+            double[] sc = solarCoords(jd0 + t / 24.0);
+            double decl = sc[0];
+            double eqT = sc[1];
+            double latRad = Math.toRadians(latDeg);
+            double diff = Math.abs(latRad - decl);
+            double altRad = Math.atan(1.0 / (shadowFactor + Math.tan(diff)));
+            double cosH = (Math.sin(altRad) - Math.sin(latRad) * Math.sin(decl))
+                / (Math.cos(latRad) * Math.cos(decl));
+            if (cosH > 1.0) cosH = 1.0;
+            if (cosH < -1.0) cosH = -1.0;
+            double H = Math.toDegrees(Math.acos(cosH)) / 15.0;
+            double transit = 12.0 - (lonDeg / 15.0) - eqT;
+            t = transit + H;
+        }
+        return t;
+    }
+
+    private static double normalizeDeg(double a) {
+        a = a % 360.0;
+        return a < 0 ? a + 360.0 : a;
+    }
+
+    private static double normalizeHours(double h) {
+        h = h % 24.0;
+        return h < 0 ? h + 24.0 : h;
+    }
+
+    public static double computeQiblaAngle(double latDeg, double lonDeg) {
+        double latK = Math.toRadians(21.4225);
+        double lonK = Math.toRadians(39.8262);
+        double lat = Math.toRadians(latDeg);
+        double lon = Math.toRadians(lonDeg);
+        double y = Math.sin(lonK - lon);
+        double x = Math.cos(lat) * Math.tan(latK) - Math.sin(lat) * Math.cos(lonK - lon);
+        return normalizeDeg(Math.toDegrees(Math.atan2(y, x)));
+    }
+
+    public static String compassDirection(double angle) {
+        String[] dirs = { "Kuzey", "Kuzeydoğu", "Doğu", "Güneydoğu", "Güney", "Güneybatı", "Batı", "Kuzeybatı" };
+        int idx = (int) (Math.round((normalizeDeg(angle) / 45.0))) % 8;
+        return dirs[idx];
+    }
+
+    public static int haversineKm(double lat1, double lon1, double lat2, double lon2) {
+        double R = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0)
+            + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+            * Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0);
+        double c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+        return (int) Math.round(R * c);
+    }
+}
+`,
+  'utf8'
+);
+
+// 13. WearWatchActivity.java: Samsung Galaxy Watch 8 ve tüm Wear OS saatler için %100 native arayüz (WebView gerektirmez)
+fs.writeFileSync(
+  path.join(javaPkgDir, 'WearWatchActivity.java'),
+  `package com.mihrab.namazvakti;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.location.Location;
+import android.location.LocationManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import java.util.Locale;
+import java.util.TimeZone;
+
+public class WearWatchActivity extends Activity implements SensorEventListener {
+
+    private static final String PREFS = "mihrab_watch_ui_prefs";
+    private static final String KEY_CITY_ID = "city_id";
+    private static final String KEY_CUSTOM_NAME = "custom_name";
+    private static final String KEY_CUSTOM_LAT = "custom_lat";
+    private static final String KEY_CUSTOM_LON = "custom_lon";
+    private static final String KEY_CUSTOM_TZ = "custom_tz";
+    private static final String KEY_ZIKIR_IDX = "zikir_idx";
+    private static final String KEY_ZIKIR_COUNTS = "zikir_counts";
+    private static final String KEY_ZIKIR_ROUNDS = "zikir_rounds";
+    private static final int REQ_WATCH_PERMS = 901;
+
+    private static final String[] ZIKIR_TITLES = {
+        "Sübhânallah", "Elhamdülillah", "Allâhu Ekber",
+        "Lâ ilâhe illallâh", "Estağfirullâh", "Salavat-ı Şerife"
+    };
+    private static final int[] ZIKIR_TARGETS = { 33, 33, 33, 99, 100, 100 };
+
+    private int activeTab = 0; // 0: Vakit, 1: Liste, 2: Kıble, 3: Zikir, 4: Şehir/GPS
+    private WearPrayerCalculator.WatchCity currentCity;
+    private WearPrayerCalculator.DaySchedule todaySchedule;
+    private WearPrayerCalculator.DaySchedule tomorrowSchedule;
+    private WearPrayerCalculator.DaySchedule yesterdaySchedule;
+
+    private int zikirIdx = 0;
+    private final int[] zikirCounts = new int[ZIKIR_TITLES.length];
+    private final int[] zikirRounds = new int[ZIKIR_TITLES.length];
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable ticker;
+
+    private FrameLayout contentHost;
+    private WatchDialView dialView;
+    private WatchCompassView compassView;
+    private LinearLayout prayerListContainer;
+    private TextView zikirTitleView;
+    private TextView zikirCountText;
+    private TextView zikirTargetText;
+    private TextView compassLabelText;
+    private TextView cityStatusText;
+    private final Button[] navButtons = new Button[4];
+
+    private SensorManager sensorManager;
+    private Sensor rotSensor;
+    private Sensor accelSensor;
+    private Sensor magSensor;
+    private final float[] lastAccel = new float[3];
+    private final float[] lastMag = new float[3];
+    private boolean hasAccel = false;
+    private boolean hasMag = false;
+    private Float smoothedHeading = null;
+    private long lastAlignedBuzzMs = 0L;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        loadState();
+        recomputeSchedules();
+        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+        requestWatchPermissionsIfNeeded();
+
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        if (sensorManager != null) {
+            rotSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+            accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            magSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        }
+
+        buildUi();
+        switchTab(0);
+    }
+
+    private void requestWatchPermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    new String[] { Manifest.permission.POST_NOTIFICATIONS },
+                    REQ_WATCH_PERMS
+                );
+            }
+        }
+    }
+
+    private void loadState() {
+        SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String customName = sp.getString(KEY_CUSTOM_NAME, null);
+        if (customName != null && sp.contains(KEY_CUSTOM_LAT)) {
+            currentCity = new WearPrayerCalculator.WatchCity(
+                "gps",
+                customName,
+                Double.longBitsToDouble(sp.getLong(KEY_CUSTOM_LAT, 0L)),
+                Double.longBitsToDouble(sp.getLong(KEY_CUSTOM_LON, 0L)),
+                sp.getString(KEY_CUSTOM_TZ, TimeZone.getDefault().getID())
+            );
+        } else {
+            currentCity = WearPrayerCalculator.findById(sp.getString(KEY_CITY_ID, "tr-istanbul"));
+        }
+
+        zikirIdx = Math.max(0, Math.min(ZIKIR_TITLES.length - 1, sp.getInt(KEY_ZIKIR_IDX, 0)));
+        String[] countsRaw = sp.getString(KEY_ZIKIR_COUNTS, "").split(",");
+        String[] roundsRaw = sp.getString(KEY_ZIKIR_ROUNDS, "").split(",");
+        for (int i = 0; i < ZIKIR_TITLES.length; i++) {
+            try {
+                if (i < countsRaw.length && !countsRaw[i].isEmpty()) {
+                    zikirCounts[i] = Integer.parseInt(countsRaw[i]);
+                }
+                if (i < roundsRaw.length && !roundsRaw[i].isEmpty()) {
+                    zikirRounds[i] = Integer.parseInt(roundsRaw[i]);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+    }
+
+    private void saveZikirState() {
+        StringBuilder cb = new StringBuilder();
+        StringBuilder rb = new StringBuilder();
+        for (int i = 0; i < ZIKIR_TITLES.length; i++) {
+            if (i > 0) {
+                cb.append(",");
+                rb.append(",");
+            }
+            cb.append(zikirCounts[i]);
+            rb.append(zikirRounds[i]);
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_ZIKIR_IDX, zikirIdx)
+            .putString(KEY_ZIKIR_COUNTS, cb.toString())
+            .putString(KEY_ZIKIR_ROUNDS, rb.toString())
+            .apply();
+    }
+
+    private void saveCity(WearPrayerCalculator.WatchCity city) {
+        currentCity = city;
+        SharedPreferences.Editor ed = getSharedPreferences(PREFS, MODE_PRIVATE).edit();
+        if ("gps".equals(city.id)) {
+            ed.putString(KEY_CUSTOM_NAME, city.name);
+            ed.putLong(KEY_CUSTOM_LAT, Double.doubleToRawLongBits(city.lat));
+            ed.putLong(KEY_CUSTOM_LON, Double.doubleToRawLongBits(city.lon));
+            ed.putString(KEY_CUSTOM_TZ, city.tz);
+        } else {
+            ed.remove(KEY_CUSTOM_NAME);
+            ed.putString(KEY_CITY_ID, city.id);
+        }
+        ed.apply();
+
+        recomputeSchedules();
+        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+        refreshPrayerListUi();
+        if (dialView != null) dialView.invalidate();
+        if (compassView != null) compassView.invalidate();
+    }
+
+    private void recomputeSchedules() {
+        long now = System.currentTimeMillis();
+        todaySchedule = WearPrayerCalculator.calculateDay(currentCity, now);
+        tomorrowSchedule = WearPrayerCalculator.calculateDay(currentCity, now + 86_400_000L);
+        yesterdaySchedule = WearPrayerCalculator.calculateDay(currentCity, now - 86_400_000L);
+    }
+
+    private void buildUi() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF040806);
+
+        contentHost = new FrameLayout(this);
+        root.addView(contentHost, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        // 0: Vakit Kadranı
+        dialView = new WatchDialView(this);
+        dialView.setOnClickListener(v -> switchTab(4)); // Şehir adına/kadrana dokununca konum seçimine geç
+
+        // 1: 6 Vakit Listesi
+        ScrollView listScroll = new ScrollView(this);
+        listScroll.setVerticalScrollBarEnabled(false);
+        prayerListContainer = new LinearLayout(this);
+        prayerListContainer.setOrientation(LinearLayout.VERTICAL);
+        prayerListContainer.setPadding(dp(26), dp(26), dp(26), dp(52));
+        listScroll.addView(prayerListContainer);
+
+        // 2: Kıble Pusulası
+        LinearLayout compassScreen = new LinearLayout(this);
+        compassScreen.setOrientation(LinearLayout.VERTICAL);
+        compassScreen.setGravity(Gravity.CENTER);
+        compassScreen.setPadding(dp(18), dp(20), dp(18), dp(46));
+        compassView = new WatchCompassView(this);
+        compassScreen.addView(compassView, new LinearLayout.LayoutParams(dp(122), dp(122)));
+        compassLabelText = new TextView(this);
+        compassLabelText.setGravity(Gravity.CENTER);
+        compassLabelText.setTextColor(0xFF34D399);
+        compassLabelText.setTextSize(12f);
+        compassLabelText.setTypeface(Typeface.DEFAULT_BOLD);
+        compassLabelText.setPadding(0, dp(4), 0, 0);
+        compassScreen.addView(compassLabelText);
+
+        // 3: Zikirmatik
+        View zikirScreen = buildZikirScreen();
+
+        // 4: Konum / Şehir Seçici
+        View cityScreen = buildCityScreen();
+
+        contentHost.addView(dialView);
+        contentHost.addView(listScroll);
+        contentHost.addView(compassScreen);
+        contentHost.addView(zikirScreen);
+        contentHost.addView(cityScreen);
+
+        // Alt kompakt yuvarlak saat navigasyon çubuğu
+        LinearLayout bottomNav = new LinearLayout(this);
+        bottomNav.setOrientation(LinearLayout.HORIZONTAL);
+        bottomNav.setGravity(Gravity.CENTER);
+        bottomNav.setPadding(dp(8), dp(2), dp(8), dp(12));
+        String[] tabLabels = { "Vakit", "Liste", "Kıble", "Zikir" };
+        for (int i = 0; i < 4; i++) {
+            final int idx = i;
+            Button b = new Button(this);
+            b.setAllCaps(false);
+            b.setText(tabLabels[i]);
+            b.setTextSize(10f);
+            b.setPadding(dp(6), dp(2), dp(6), dp(2));
+            b.setMinHeight(dp(28));
+            b.setMinimumHeight(dp(28));
+            b.setMinWidth(dp(40));
+            b.setMinimumWidth(dp(40));
+            b.setOnClickListener(v -> switchTab(idx));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(28)
+            );
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            bottomNav.addView(b, lp);
+            navButtons[i] = b;
+        }
+        FrameLayout.LayoutParams navParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        root.addView(bottomNav, navParams);
+
+        setContentView(root);
+        refreshPrayerListUi();
+        refreshZikirUi();
+        refreshCompassLabel(null);
+    }
+
+    private View buildZikirScreen() {
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.setGravity(Gravity.CENTER);
+        wrap.setPadding(dp(22), dp(22), dp(22), dp(48));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button prevBtn = makeMiniBtn("‹", v -> {
+            zikirIdx = (zikirIdx - 1 + ZIKIR_TITLES.length) % ZIKIR_TITLES.length;
+            saveZikirState();
+            refreshZikirUi();
+        });
+
+        zikirTitleView = new TextView(this);
+        zikirTitleView.setGravity(Gravity.CENTER);
+        zikirTitleView.setTextColor(0xFFEDF2F0);
+        zikirTitleView.setTextSize(12f);
+        zikirTitleView.setTypeface(Typeface.DEFAULT_BOLD);
+        zikirTitleView.setSingleLine(true);
+        zikirTitleView.setEllipsize(TextUtils.TruncateAt.END);
+
+        Button nextBtn = makeMiniBtn("›", v -> {
+            zikirIdx = (zikirIdx + 1) % ZIKIR_TITLES.length;
+            saveZikirState();
+            refreshZikirUi();
+        });
+
+        header.addView(prevBtn, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        titleLp.setMargins(dp(4), 0, dp(4), 0);
+        header.addView(zikirTitleView, titleLp);
+        header.addView(nextBtn, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        wrap.addView(header, new LinearLayout.LayoutParams(dp(170), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Büyük yuvarlak Zikir sayacı düğmesi
+        LinearLayout tapCircle = new LinearLayout(this);
+        tapCircle.setOrientation(LinearLayout.VERTICAL);
+        tapCircle.setGravity(Gravity.CENTER);
+        GradientDrawable circleBg = new GradientDrawable();
+        circleBg.setShape(GradientDrawable.OVAL);
+        circleBg.setColor(0xFF0D261D);
+        circleBg.setStroke(dp(2), 0xFF34D399);
+        tapCircle.setBackground(circleBg);
+
+        zikirCountText = new TextView(this);
+        zikirCountText.setTextColor(0xFF34D399);
+        zikirCountText.setTextSize(26f);
+        zikirCountText.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        zikirCountText.setGravity(Gravity.CENTER);
+
+        zikirTargetText = new TextView(this);
+        zikirTargetText.setTextColor(0xFFA7BDB4);
+        zikirTargetText.setTextSize(10f);
+        zikirTargetText.setGravity(Gravity.CENTER);
+
+        tapCircle.addView(zikirCountText);
+        tapCircle.addView(zikirTargetText);
+        tapCircle.setOnClickListener(v -> incrementZikir());
+
+        LinearLayout.LayoutParams circleLp = new LinearLayout.LayoutParams(dp(96), dp(96));
+        circleLp.setMargins(0, dp(6), 0, dp(6));
+        wrap.addView(tapCircle, circleLp);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        Button minusBtn = makeMiniBtn("-1", v -> {
+            if (zikirCounts[zikirIdx] > 0) {
+                zikirCounts[zikirIdx]--;
+                saveZikirState();
+                refreshZikirUi();
+            }
+        });
+        Button resetBtn = makeMiniBtn("Sıfırla", v -> {
+            zikirCounts[zikirIdx] = 0;
+            saveZikirState();
+            refreshZikirUi();
+        });
+        LinearLayout.LayoutParams aLp1 = new LinearLayout.LayoutParams(dp(44), dp(26));
+        aLp1.setMargins(0, 0, dp(6), 0);
+        actions.addView(minusBtn, aLp1);
+        actions.addView(resetBtn, new LinearLayout.LayoutParams(dp(58), dp(26)));
+        wrap.addView(actions);
+
+        return wrap;
+    }
+
+    private View buildCityScreen() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setPadding(dp(26), dp(28), dp(26), dp(54));
+
+        TextView head = new TextView(this);
+        head.setText("Şehir / Konum Seç");
+        head.setTextColor(0xFFEDF2F0);
+        head.setTextSize(13f);
+        head.setTypeface(Typeface.DEFAULT_BOLD);
+        head.setGravity(Gravity.CENTER);
+        col.addView(head);
+
+        cityStatusText = new TextView(this);
+        cityStatusText.setText("Aktif: " + currentCity.name);
+        cityStatusText.setTextColor(0xFF34D399);
+        cityStatusText.setTextSize(10f);
+        cityStatusText.setGravity(Gravity.CENTER);
+        cityStatusText.setPadding(0, dp(2), 0, dp(8));
+        col.addView(cityStatusText);
+
+        Button gpsBtn = new Button(this);
+        gpsBtn.setAllCaps(false);
+        gpsBtn.setText("GPS ile Konum Bul");
+        gpsBtn.setTextSize(11f);
+        gpsBtn.setTextColor(0xFF04140E);
+        GradientDrawable gpsBg = new GradientDrawable();
+        gpsBg.setCornerRadius(dp(14));
+        gpsBg.setColor(0xFF10B981);
+        gpsBtn.setBackground(gpsBg);
+        gpsBtn.setOnClickListener(v -> detectWatchGps());
+        LinearLayout.LayoutParams gLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(34)
+        );
+        gLp.setMargins(0, 0, 0, dp(8));
+        col.addView(gpsBtn, gLp);
+
+        for (final WearPrayerCalculator.WatchCity c : WearPrayerCalculator.CITIES) {
+            Button cb = new Button(this);
+            cb.setAllCaps(false);
+            cb.setText(c.name);
+            cb.setTextSize(12f);
+            cb.setTextColor(0xFFEDF2F0);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(12));
+            bg.setColor(0xFF0E1714);
+            bg.setStroke(dp(1), 0xFF1E322B);
+            cb.setBackground(bg);
+            cb.setOnClickListener(v -> {
+                saveCity(c);
+                cityStatusText.setText("Aktif: " + c.name);
+                vibrateMs(18);
+                switchTab(0);
+            });
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(34)
+            );
+            cLp.setMargins(0, 0, 0, dp(5));
+            col.addView(cb, cLp);
+        }
+
+        scroll.addView(col);
+        return scroll;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_WATCH_PERMS) {
+            boolean locGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+            if (locGranted && activeTab == 4) {
+                detectWatchGps();
+            }
+            WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+        }
+    }
+
+    private void detectWatchGps() {
+        boolean fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED;
+        boolean coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED;
+
+        if (!fine && !coarse) {
+            ActivityCompat.requestPermissions(
+                this,
+                new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION },
+                REQ_WATCH_PERMS
+            );
+            cityStatusText.setText("GPS izni verip tekrar dokunun");
+            return;
+        }
+
+        try {
+            LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) {
+                cityStatusText.setText("GPS servisi bulunamadı");
+                return;
+            }
+            Location loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (loc == null) loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            if (loc == null) loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+
+            if (loc != null) {
+                WearPrayerCalculator.WatchCity nearest = WearPrayerCalculator.findNearestCity(
+                    loc.getLatitude(), loc.getLongitude()
+                );
+                WearPrayerCalculator.WatchCity gpsCity = new WearPrayerCalculator.WatchCity(
+                    "gps",
+                    nearest.name,
+                    loc.getLatitude(),
+                    loc.getLongitude(),
+                    TimeZone.getDefault().getID()
+                );
+                saveCity(gpsCity);
+                cityStatusText.setText("GPS: " + nearest.name);
+                vibrateMs(25);
+                switchTab(0);
+            } else {
+                cityStatusText.setText("GPS sinyali bekleniyor, listeden seçebilirsiniz");
+            }
+        } catch (SecurityException e) {
+            cityStatusText.setText("Konum izni gerekli");
+        }
+    }
+
+    private void incrementZikir() {
+        int target = ZIKIR_TARGETS[zikirIdx];
+        int next = zikirCounts[zikirIdx] + 1;
+        if (next >= target) {
+            zikirRounds[zikirIdx]++;
+            zikirCounts[zikirIdx] = 0;
+            if (zikirIdx < 3) {
+                zikirIdx = (zikirIdx + 1) % 3;
+            }
+            vibrateMs(55);
+        } else {
+            zikirCounts[zikirIdx] = next;
+            vibrateMs(14);
+        }
+        saveZikirState();
+        refreshZikirUi();
+    }
+
+    private void refreshZikirUi() {
+        if (zikirTitleView == null) return;
+        zikirTitleView.setText(ZIKIR_TITLES[zikirIdx]);
+        zikirCountText.setText(String.valueOf(zikirCounts[zikirIdx]));
+        zikirTargetText.setText("/ " + ZIKIR_TARGETS[zikirIdx] + " · Tur " + zikirRounds[zikirIdx]);
+    }
+
+    private void refreshPrayerListUi() {
+        if (prayerListContainer == null || todaySchedule == null) return;
+        prayerListContainer.removeAllViews();
+
+        TextView title = new TextView(this);
+        title.setText(currentCity.name + " · Bugün");
+        title.setTextColor(0xFF9DB0A8);
+        title.setTextSize(11f);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, 0, 0, dp(6));
+        title.setOnClickListener(v -> switchTab(4));
+        prayerListContainer.addView(title);
+
+        NextInfo info = computeNextInfo();
+        for (WearPrayerCalculator.PrayerEntry p : todaySchedule.prayers) {
+            boolean isNext = p.key.equals(info.next.key) && info.next.epochMs == p.epochMs;
+            boolean isCur = info.current != null && p.key.equals(info.current.key);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(12), dp(7), dp(12), dp(7));
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(12));
+            if (isNext) {
+                bg.setColor(0xFF0E2B20);
+                bg.setStroke(dp(1), 0xFF34D399);
+            } else if (isCur) {
+                bg.setColor(0xFF1D1B10);
+                bg.setStroke(dp(1), 0xFFFBBF24);
+            } else {
+                bg.setColor(0xFF0A120F);
+                bg.setStroke(dp(1), 0xFF16241F);
+            }
+            row.setBackground(bg);
+
+            TextView lbl = new TextView(this);
+            lbl.setText(p.label);
+            lbl.setTextSize(12f);
+            lbl.setTextColor(isNext ? 0xFFFFFFFF : (isCur ? 0xFFFDE68A : 0xFFB7C7C0));
+            if (isNext) lbl.setTypeface(Typeface.DEFAULT_BOLD);
+
+            TextView tm = new TextView(this);
+            tm.setText(p.formattedTime);
+            tm.setTextSize(12f);
+            tm.setTypeface(Typeface.MONOSPACE, isNext ? Typeface.BOLD : Typeface.NORMAL);
+            tm.setTextColor(isNext ? 0xFF34D399 : 0xFFEDF2F0);
+
+            row.addView(lbl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(tm);
+
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            rLp.setMargins(0, 0, 0, dp(4));
+            prayerListContainer.addView(row, rLp);
+        }
+
+        TextView extra = new TextView(this);
+        extra.setText("Sabah " + todaySchedule.sabah + " · Teheccüd " + todaySchedule.teheccud);
+        extra.setTextColor(0xFF7D9189);
+        extra.setTextSize(10f);
+        extra.setGravity(Gravity.CENTER);
+        extra.setPadding(0, dp(4), 0, dp(6));
+        prayerListContainer.addView(extra);
+    }
+
+    private void switchTab(int tab) {
+        activeTab = tab;
+        for (int i = 0; i < contentHost.getChildCount(); i++) {
+            contentHost.getChildAt(i).setVisibility(i == tab ? View.VISIBLE : View.GONE);
+        }
+        for (int i = 0; i < 4; i++) {
+            Button b = navButtons[i];
+            if (b == null) continue;
+            boolean active = (i == tab);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(14));
+            bg.setColor(active ? 0xFF10B981 : 0xFF101C18);
+            b.setBackground(bg);
+            b.setTextColor(active ? 0xFF04120C : 0xFF8EA39B);
+        }
+        if (tab == 1) refreshPrayerListUi();
+        if (tab == 2) registerCompassSensors();
+        else unregisterCompassSensors();
+    }
+
+    private Button makeMiniBtn(String text, View.OnClickListener listener) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(text);
+        b.setTextSize(11f);
+        b.setTextColor(0xFFCBD5E1);
+        b.setPadding(0, 0, 0, 0);
+        b.setMinHeight(dp(26));
+        b.setMinimumHeight(dp(26));
+        b.setMinWidth(dp(28));
+        b.setMinimumWidth(dp(28));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(12));
+        bg.setColor(0xFF111D18);
+        bg.setStroke(dp(1), 0xFF21332C);
+        b.setBackground(bg);
+        b.setOnClickListener(listener);
+        return b;
+    }
+
+    private void registerCompassSensors() {
+        if (sensorManager == null) return;
+        if (rotSensor != null) {
+            sensorManager.registerListener(this, rotSensor, SensorManager.SENSOR_DELAY_UI);
+        } else {
+            if (accelSensor != null) {
+                sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_UI);
+            }
+            if (magSensor != null) {
+                sensorManager.registerListener(this, magSensor, SensorManager.SENSOR_DELAY_UI);
+            }
+        }
+    }
+
+    private void unregisterCompassSensors() {
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (activeTab != 2) return;
+        float rawDeg = Float.NaN;
+
+        if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+            float[] rotMat = new float[9];
+            float[] orient = new float[3];
+            SensorManager.getRotationMatrixFromVector(rotMat, event.values);
+            SensorManager.getOrientation(rotMat, orient);
+            rawDeg = (float) ((Math.toDegrees(orient[0]) + 360.0) % 360.0);
+        } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, lastAccel, 0, 3);
+            hasAccel = true;
+        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            System.arraycopy(event.values, 0, lastMag, 0, 3);
+            hasMag = true;
+        }
+
+        if (Float.isNaN(rawDeg) && hasAccel && hasMag) {
+            float[] R = new float[9];
+            float[] I = new float[9];
+            if (SensorManager.getRotationMatrix(R, I, lastAccel, lastMag)) {
+                float[] orient = new float[3];
+                SensorManager.getOrientation(R, orient);
+                rawDeg = (float) ((Math.toDegrees(orient[0]) + 360.0) % 360.0);
+            }
+        }
+
+        if (!Float.isNaN(rawDeg)) {
+            if (smoothedHeading == null) {
+                smoothedHeading = rawDeg;
+            } else {
+                float diff = rawDeg - smoothedHeading;
+                if (diff > 180f) diff -= 360f;
+                if (diff < -180f) diff += 360f;
+                smoothedHeading = (smoothedHeading + diff * 0.22f + 360f) % 360f;
+            }
+            refreshCompassLabel(smoothedHeading);
+            if (compassView != null) compassView.invalidate();
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+    }
+
+    private void refreshCompassLabel(Float headingDeg) {
+        if (compassLabelText == null || todaySchedule == null) return;
+        double qibla = todaySchedule.qiblaAngle;
+        String base = String.format(Locale.US, "%.1f° %s", qibla, todaySchedule.qiblaDirection);
+        if (headingDeg != null) {
+            double diff = ((qibla - headingDeg + 540.0) % 360.0) - 180.0;
+            if (Math.abs(diff) <= 6.0) {
+                compassLabelText.setTextColor(0xFF34D399);
+                compassLabelText.setText(base + " · Kıble Hizalı");
+                long now = System.currentTimeMillis();
+                if (now - lastAlignedBuzzMs > 3000L) {
+                    lastAlignedBuzzMs = now;
+                    vibrateMs(22);
+                }
+                return;
+            }
+        }
+        compassLabelText.setTextColor(0xFFFBBF24);
+        compassLabelText.setText(base);
+    }
+
+    private static class NextInfo {
+        WearPrayerCalculator.PrayerEntry current;
+        WearPrayerCalculator.PrayerEntry next;
+        long remainingMs;
+        float progress;
+    }
+
+    private NextInfo computeNextInfo() {
+        long now = System.currentTimeMillis();
+        WearPrayerCalculator.PrayerEntry[] list = todaySchedule.prayers;
+        int nextIdx = -1;
+        for (int i = 0; i < list.length; i++) {
+            if (list[i].epochMs > now) {
+                nextIdx = i;
+                break;
+            }
+        }
+
+        NextInfo info = new NextInfo();
+        if (nextIdx == -1) {
+            recomputeSchedulesIfDayRolled(now);
+            list = todaySchedule.prayers;
+            info.current = list[list.length - 1];
+            info.next = tomorrowSchedule.prayers[0];
+        } else if (nextIdx == 0) {
+            info.current = yesterdaySchedule.prayers[yesterdaySchedule.prayers.length - 1];
+            info.next = list[0];
+        } else {
+            info.current = list[nextIdx - 1];
+            info.next = list[nextIdx];
+        }
+
+        long start = info.current.epochMs;
+        long end = info.next.epochMs;
+        long span = Math.max(1L, end - start);
+        info.remainingMs = Math.max(0L, end - now);
+        info.progress = Math.max(0f, Math.min(1f, (float) (now - start) / (float) span));
+        return info;
+    }
+
+    private void recomputeSchedulesIfDayRolled(long now) {
+        if (now > tomorrowSchedule.prayers[0].epochMs) {
+            recomputeSchedules();
+        }
+    }
+
+    private void vibrateMs(long ms) {
+        try {
+            Vibrator vib = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (vib == null || !vib.hasVibrator()) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vib.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                vib.vibrate(ms);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        recomputeSchedules();
+        if (activeTab == 2) registerCompassSensors();
+        ticker = new Runnable() {
+            @Override
+            public void run() {
+                if (dialView != null && activeTab == 0) {
+                    dialView.invalidate();
+                }
+                handler.postDelayed(this, 1000L);
+            }
+        };
+        handler.post(ticker);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (ticker != null) handler.removeCallbacks(ticker);
+        unregisterCompassSensors();
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private class WatchDialView extends View {
+        private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint arcPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint cityPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint subPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint timerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF oval = new RectF();
+
+        public WatchDialView(Context c) {
+            super(c);
+            trackPaint.setStyle(Paint.Style.STROKE);
+            trackPaint.setColor(0xFF13221C);
+            trackPaint.setStrokeWidth(dp(5));
+
+            arcPaint.setStyle(Paint.Style.STROKE);
+            arcPaint.setColor(0xFF10B981);
+            arcPaint.setStrokeWidth(dp(5));
+            arcPaint.setStrokeCap(Paint.Cap.ROUND);
+
+            cityPaint.setTextAlign(Paint.Align.CENTER);
+            cityPaint.setColor(0xFF9DB0A8);
+            cityPaint.setTextSize(dp(11));
+
+            subPaint.setTextAlign(Paint.Align.CENTER);
+            subPaint.setColor(0xFF8EA39B);
+            subPaint.setTextSize(dp(10));
+
+            titlePaint.setTextAlign(Paint.Align.CENTER);
+            titlePaint.setColor(0xFFFFFFFF);
+            titlePaint.setTextSize(dp(19));
+            titlePaint.setTypeface(Typeface.DEFAULT_BOLD);
+
+            timerPaint.setTextAlign(Paint.Align.CENTER);
+            timerPaint.setColor(0xFF34D399);
+            timerPaint.setTextSize(dp(25));
+            timerPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            int w = getWidth();
+            int h = getHeight();
+            int size = Math.min(w, h);
+            int pad = dp(8);
+            float cx = w / 2f;
+            float cy = h / 2f;
+            float r = (size / 2f) - pad;
+            oval.set(cx - r, cy - r, cx + r, cy + r);
+
+            NextInfo info = computeNextInfo();
+            canvas.drawArc(oval, 0, 360, false, trackPaint);
+            canvas.drawArc(oval, -90, 360f * info.progress, false, arcPaint);
+
+            String clock = WearPrayerCalculator.formatHHMM(
+                System.currentTimeMillis(),
+                TimeZone.getTimeZone(currentCity.tz)
+            );
+            canvas.drawText(currentCity.name + " · " + clock + " ▾", cx, cy - r * 0.44f, cityPaint);
+
+            subPaint.setColor(0xFF34D399);
+            canvas.drawText("Sıradaki · " + info.next.formattedTime, cx, cy - r * 0.20f, subPaint);
+
+            canvas.drawText(info.next.label, cx, cy + dp(4), titlePaint);
+
+            long secTotal = info.remainingMs / 1000L;
+            long hh = secTotal / 3600L;
+            long mm = (secTotal % 3600L) / 60L;
+            long ss = secTotal % 60L;
+            String countdown = String.format(Locale.US, "%02d:%02d:%02d", hh, mm, ss);
+            canvas.drawText(countdown, cx, cy + dp(32), timerPaint);
+
+            subPaint.setColor(0xFF8EA39B);
+            canvas.drawText(
+                "Şu an: " + info.current.label + " (" + info.current.formattedTime + ")",
+                cx,
+                cy + r * 0.46f,
+                subPaint
+            );
+        }
+    }
+
+    private class WatchCompassView extends View {
+        private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint tailPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path needlePath = new Path();
+
+        public WatchCompassView(Context c) {
+            super(c);
+            ringPaint.setStyle(Paint.Style.STROKE);
+            ringPaint.setStrokeWidth(dp(2));
+
+            arrowPaint.setStyle(Paint.Style.FILL);
+            tailPaint.setStyle(Paint.Style.FILL);
+            tailPaint.setColor(0xFF273D35);
+            dotPaint.setStyle(Paint.Style.FILL);
+            dotPaint.setColor(0xFFEDF2F0);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f;
+            float r = Math.min(cx, cy) - dp(4);
+
+            double qibla = todaySchedule != null ? todaySchedule.qiblaAngle : 151.0;
+            double delta = smoothedHeading != null
+                ? (((qibla - smoothedHeading + 540.0) % 360.0) - 180.0)
+                : qibla;
+            boolean aligned = smoothedHeading != null && Math.abs(delta) <= 6.0;
+
+            ringPaint.setColor(aligned ? 0xFF34D399 : 0xFF1E332B);
+            canvas.drawCircle(cx, cy, r, ringPaint);
+
+            canvas.save();
+            canvas.rotate((float) delta, cx, cy);
+
+            arrowPaint.setColor(aligned ? 0xFF34D399 : 0xFFFBBF24);
+            needlePath.reset();
+            needlePath.moveTo(cx, cy - r + dp(10));
+            needlePath.lineTo(cx - dp(8), cy);
+            needlePath.lineTo(cx + dp(8), cy);
+            needlePath.close();
+            canvas.drawPath(needlePath, arrowPaint);
+
+            needlePath.reset();
+            needlePath.moveTo(cx, cy + r - dp(14));
+            needlePath.lineTo(cx - dp(6), cy);
+            needlePath.lineTo(cx + dp(6), cy);
+            needlePath.close();
+            canvas.drawPath(needlePath, tailPaint);
+
+            canvas.drawCircle(cx, cy, dp(4), dotPaint);
+            canvas.restore();
+        }
+    }
+}
+`,
+  'utf8'
+);
+
+console.log('AndroidManifest.xml, bildirim düzenleri, widgetlar ve WebView-siz native WearWatchActivity başarıyla yapılandırıldı.');
+
