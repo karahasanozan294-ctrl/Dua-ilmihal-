@@ -142,9 +142,13 @@ export function PdfBookReader({
       try {
         let pdfBytes: Uint8Array;
         if (activeDescriptor.kind === 'builtin') {
+          const baseOrigin = new URL(
+            import.meta.env.BASE_URL,
+            window.location.origin
+          );
           const resolvedUrl = new URL(
             activeDescriptor.book.url.replace(/^\/+/, ''),
-            window.location.href
+            baseOrigin
           ).toString();
           const res = await fetch(resolvedUrl, { signal: abortController.signal });
           if (!res.ok) {

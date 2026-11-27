@@ -7,6 +7,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { LocationInfo } from '../types/prayer';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export type AppSection =
   | 'vakitler'
@@ -79,8 +80,9 @@ export function Header({
             })}
           </nav>
 
-          {/* Zone 3: 1 primary action */}
-          <div className="shrink-0">
+          {/* Zone 3: Install & Location actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton />
             <button
               type="button"
               onClick={onOpenLocationModal}

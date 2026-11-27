@@ -46,7 +46,7 @@ export const RIYAZ_BOOK_META = {
   totalBooks: 20,
   totalHadiths: 1900,
   coverImagePath:
-    '/assets/aistudio/17953262245936383038996986437604_519c3f47.jpg',
+    `${import.meta.env.BASE_URL}assets/aistudio/17953262245936383038996986437604_519c3f47.jpg`,
 };
 
 export const MUKADDIMAT_MILESTONES: { hadithNo: number; label: string }[] = [
@@ -331,7 +331,10 @@ export async function fetchFullRiyazusSalihin(
     return cachedDataset;
   }
 
-  const response = await fetch('/data/riyazus-salihin-full.json', { signal });
+  const response = await fetch(
+    `${import.meta.env.BASE_URL}data/riyazus-salihin-full.json`,
+    { signal }
+  );
   if (!response.ok) {
     throw new Error('Riyâzu’s-Sâlihîn tam metin verisi yüklenemedi.');
   }

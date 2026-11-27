@@ -17,6 +17,7 @@ interface DailyWisdomSectionProps {
   onOpenTefsir?: () => void;
   onOpenRiyaz?: () => void;
   onOpenRamuz?: () => void;
+  onOpenSahihayn?: () => void;
 }
 
 export function DailyWisdomSection({
@@ -24,6 +25,7 @@ export function DailyWisdomSection({
   onOpenTefsir,
   onOpenRiyaz,
   onOpenRamuz,
+  onOpenSahihayn,
 }: DailyWisdomSectionProps) {
   const dayIdx = getDayOfYearIndex(new Date());
   const [ayetIdx, setAyetIdx] = useState<number>(
@@ -229,6 +231,15 @@ export function DailyWisdomSection({
                 className="min-h-[36px] rounded-lg px-2.5 py-1 font-medium text-[#575C59] hover:bg-[#F1EEE7] hover:text-[#171A19] dark:text-[#9CA7B0] dark:hover:bg-[#1A2532] whitespace-nowrap shrink-0"
               >
                 Râmûzü’l-Ehâdîs
+              </button>
+            )}
+            {onOpenSahihayn && (
+              <button
+                type="button"
+                onClick={onOpenSahihayn}
+                className="min-h-[36px] rounded-lg px-2.5 py-1 font-medium text-[#575C59] hover:bg-[#F1EEE7] hover:text-[#171A19] dark:text-[#9CA7B0] dark:hover:bg-[#1A2532] whitespace-nowrap shrink-0"
+              >
+                Buhârî & Müslim
               </button>
             )}
             <button

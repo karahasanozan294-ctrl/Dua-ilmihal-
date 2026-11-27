@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Kaynak kodları indir
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Node.js 22 kur
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -141,7 +141,7 @@ jobs:
           ls -lh build-output/Mihrab-iOS.ipa
 
       - name: IPA dosyasını GitHub Artifact olarak yükle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Mihrab-iOS-IPA
           path: build-output/Mihrab-iOS.ipa

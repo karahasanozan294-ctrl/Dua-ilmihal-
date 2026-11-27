@@ -19,9 +19,11 @@ import { EsmaulHusnaReader } from './components/EsmaulHusnaReader';
 import { QuranReader } from './components/QuranReader';
 import { HakDiniTefsirReader } from './components/HakDiniTefsirReader';
 import { MuhtasarIlmihalReader } from './components/MuhtasarIlmihalReader';
+import { OfflineIndicator } from './components/PWAInstallButton';
 import { PdfBookReader } from './components/PdfBookReader';
 import { RamuzElHadisReader } from './components/RamuzElHadisReader';
 import { RiyazusSalihinReader } from './components/RiyazusSalihinReader';
+import { SahihaynReader } from './components/SahihaynReader';
 import { WidgetModal } from './components/WidgetModal';
 import { Zikirmatik, ZikirmatikQuickCard } from './components/Zikirmatik';
 import { TURKEY_PROVINCES } from './data/cities';
@@ -167,7 +169,7 @@ export default function App() {
     'today' | 'zikirmatik' | 'imsakiye'
   >('today');
   const [librarySubView, setLibrarySubView] = useState<
-    'mushaf' | 'tefsir' | 'riyaz' | 'ramuz' | 'ilmihal' | 'esma' | 'pdf'
+    'mushaf' | 'tefsir' | 'riyaz' | 'ramuz' | 'sahihayn' | 'ilmihal' | 'esma' | 'pdf'
   >('mushaf');
   const [tefsirInitialSurah, setTefsirInitialSurah] = useState<
     number | undefined
@@ -901,6 +903,10 @@ export default function App() {
                     setActiveSection('kuran');
                     setLibrarySubView('ramuz');
                   }}
+                  onOpenSahihayn={() => {
+                    setActiveSection('kuran');
+                    setLibrarySubView('sahihayn');
+                  }}
                 />
               </>
             )}
@@ -999,6 +1005,19 @@ export default function App() {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={librarySubView === 'sahihayn'}
+                  onClick={() => setLibrarySubView('sahihayn')}
+                  className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                    librarySubView === 'sahihayn'
+                      ? 'bg-white text-[#171A19] shadow-xs dark:bg-[#233142] dark:text-[#EDF2F0]'
+                      : 'text-[#575C59] hover:text-[#171A19] dark:text-[#9CA7B0]'
+                  }`}
+                >
+                  Buhârî & Müslim
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={librarySubView === 'ilmihal'}
                   onClick={() => setLibrarySubView('ilmihal')}
                   className={`min-h-[40px] rounded-md px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
@@ -1054,6 +1073,8 @@ export default function App() {
             {librarySubView === 'riyaz' && <RiyazusSalihinReader />}
 
             {librarySubView === 'ramuz' && <RamuzElHadisReader />}
+
+            {librarySubView === 'sahihayn' && <SahihaynReader />}
 
             {librarySubView === 'ilmihal' && <MuhtasarIlmihalReader />}
 
@@ -1153,6 +1174,16 @@ export default function App() {
               type="button"
               onClick={() => {
                 setActiveSection('kuran');
+                setLibrarySubView('sahihayn');
+              }}
+              className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
+            >
+              Buhârî & Müslim
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('kuran');
                 setLibrarySubView('ilmihal');
               }}
               className="hover:text-[#171A19] dark:hover:text-[#EDF2F0]"
@@ -1228,6 +1259,8 @@ export default function App() {
         preferences={widgetPrefs}
         onUpdatePreferences={setWidgetPrefs}
       />
+
+      <OfflineIndicator />
     </div>
   );
 }
