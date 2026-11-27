@@ -38,6 +38,20 @@ for (const perm of requiredPermissions) {
   }
 }
 
+if (!manifest.includes('android.hardware.type.watch')) {
+  manifest = manifest.replace(
+    '<application',
+    `    <uses-feature android:name="android.hardware.type.watch" android:required="false" />\n\n    <application`
+  );
+}
+
+if (!manifest.includes('com.google.android.wearable.standalone')) {
+  manifest = manifest.replace(
+    '</application>',
+    `        <meta-data\n            android:name="com.google.android.wearable.standalone"\n            android:value="true" />\n    </application>`
+  );
+}
+
 const receiverSnippets = `
         <receiver
             android:name=".PrayerAlarmReceiver"
@@ -634,9 +648,12 @@ public class PrayerBarHelper {
     public static final String KEY_SCHEDULE_JSON = "schedule_json";
     public static final String CHANNEL_BAR_ID = "mihrab_prayer_bar";
     public static final String CHANNEL_ALERT_ID = "mihrab_prayer_alerts";
+    public static final String CHANNEL_WATCH_ID = "mihrab_watch_mirror";
     public static final int BAR_NOTIFICATION_ID = 1001;
+    public static final int WATCH_NOTIFICATION_ID = 1002;
     public static final int ALARM_REFRESH_REQUEST_BASE = 2000;
     public static final int ALARM_ALERT_REQUEST_BASE = 3000;
+    public static final int ALARM_WATCH_REQUEST_BASE = 5000;
 
     public static void ensureChannels(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -664,6 +681,18 @@ public class PrayerBarHelper {
             alertChannel.enableVibration(true);
             alertChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(alertChannel);
+
+            NotificationChannel watchChannel = new NotificationChannel(
+                CHANNEL_WATCH_ID,
+                "Akıllı Saat Vakit Özeti",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            watchChannel.setDescription("Akıllı saat ve bilekliklere vakit geçişlerini yansıtır.");
+            watchChannel.setSound(null, null);
+            watchChannel.enableVibration(true);
+            watchChannel.setShowBadge(false);
+            watchChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(watchChannel);
         }
     }
 
@@ -991,12 +1020,49 @@ public class PrayerBarHelper {
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
+            .setLocalOnly(false)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .extend(new NotificationCompat.WearableExtender())
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
         try {
             int notifId = (int) (System.currentTimeMillis() % 100000) + 4000;
             NotificationManagerCompat.from(context).notify(notifId, builder.build());
+        } catch (SecurityException ignored) {
+        }
+    }
+
+    public static void postWatchSummaryNotification(Context context, String title, String body) {
+        ensureChannels(context);
+        if (!hasNotificationPermission(context)) return;
+
+        Intent launchIntent = new Intent(context, MainActivity.class);
+        launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+            context,
+            3,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_WATCH_ID)
+            .setSmallIcon(R.drawable.ic_stat_mihrab)
+            .setColor(0xFF0F6E56)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .setLocalOnly(false)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .extend(new NotificationCompat.WearableExtender())
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+        try {
+            NotificationManagerCompat.from(context).notify(WATCH_NOTIFICATION_ID, builder.build());
         } catch (SecurityException ignored) {
         }
     }
@@ -1008,6 +1074,7 @@ public class PrayerBarHelper {
         long now = System.currentTimeMillis();
         boolean persistentEnabled = data.optBoolean("persistentEnabled", true);
         boolean alertsEnabled = data.optBoolean("alertsEnabled", true);
+        boolean watchAlertsEnabled = data.optBoolean("watchAlertsEnabled", true);
         int leadMinutes = data.optInt("leadMinutes", 0);
         String locationName = data.optString("locationName", "Mihrab");
         JSONObject enabledPrayers = data.optJSONObject("enabledPrayers");
@@ -1059,8 +1126,32 @@ public class PrayerBarHelper {
 
             boolean prayerChecked = enabledPrayers == null || enabledPrayers.optBoolean(key, true);
             long triggerMs = epochMs - ((long) leadMinutes * 60_000L);
-            if (alertsEnabled && prayerChecked && triggerMs > now + 2000L) {
+            boolean primaryAlertScheduled = alertsEnabled && prayerChecked && triggerMs > now + 2000L;
+            if (primaryAlertScheduled) {
                 setAllowIdleAlarm(am, triggerMs, alertPi);
+            }
+
+            // Akıllı saat & bileklik özet aynalama alarmı (sesli uyarı kapalı olan vakitlerde de bileğe kısa özet düşer)
+            Intent watchIntent = new Intent(context, PrayerAlarmReceiver.class);
+            watchIntent.putExtra("actionType", "watch");
+            JSONObject nextAfter = i + 1 < prayers.length() ? prayers.optJSONObject(i + 1) : null;
+            String watchTitle = label + " " + time + " · " + locationName;
+            String watchBody = nextAfter != null
+                ? "Sıradaki: " + nextAfter.optString("label", "") + " " + nextAfter.optString("time", "")
+                : locationName + " vakit özeti";
+            watchIntent.putExtra("title", watchTitle);
+            watchIntent.putExtra("body", watchBody);
+
+            PendingIntent watchPi = PendingIntent.getBroadcast(
+                context,
+                ALARM_WATCH_REQUEST_BASE + i,
+                watchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            am.cancel(watchPi);
+
+            if (watchAlertsEnabled && !primaryAlertScheduled && epochMs > now + 2000L) {
+                setAllowIdleAlarm(am, epochMs, watchPi);
             }
         }
     }
@@ -1091,11 +1182,14 @@ public class PrayerAlarmReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         PrayerBarHelper.applyFromStorage(context);
 
-        if (intent != null && "alert".equals(intent.getStringExtra("actionType"))) {
+        if (intent != null) {
+            String actionType = intent.getStringExtra("actionType");
             String title = intent.getStringExtra("title");
             String body = intent.getStringExtra("body");
-            if (title != null && body != null) {
+            if ("alert".equals(actionType) && title != null && body != null) {
                 PrayerBarHelper.postAlertNotification(context, title, body);
+            } else if ("watch".equals(actionType) && title != null && body != null) {
+                PrayerBarHelper.postWatchSummaryNotification(context, title, body);
             }
         }
     }
@@ -1131,6 +1225,8 @@ fs.writeFileSync(
   `package com.mihrab.namazvakti;
 
 import android.Manifest;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.os.Build;
 
 import com.getcapacitor.JSObject;
@@ -1205,6 +1301,7 @@ public class MihrabNotificationPlugin extends Plugin {
             JSONObject payload = new JSONObject();
             payload.put("persistentEnabled", call.getBoolean("persistentEnabled", true));
             payload.put("alertsEnabled", call.getBoolean("alertsEnabled", true));
+            payload.put("watchAlertsEnabled", call.getBoolean("watchAlertsEnabled", true));
             payload.put("soundEnabled", call.getBoolean("soundEnabled", false));
             payload.put("leadMinutes", call.getInt("leadMinutes", 0));
             payload.put("locationName", call.getString("locationName", "İstanbul"));
@@ -1235,6 +1332,29 @@ public class MihrabNotificationPlugin extends Plugin {
         PrayerBarHelper.postAlertNotification(getContext(), title, body);
         JSObject ret = new JSObject();
         ret.put("sent", PrayerBarHelper.hasNotificationPermission(getContext()));
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void sendWatchSummaryNotification(PluginCall call) {
+        String title = call.getString("title", "Mihrab Saat Özeti");
+        String body = call.getString("body", "");
+        PrayerBarHelper.postWatchSummaryNotification(getContext(), title, body);
+        JSObject ret = new JSObject();
+        ret.put("sent", PrayerBarHelper.hasNotificationPermission(getContext()));
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void isWatchDevice(PluginCall call) {
+        boolean hasWatchFeature = getContext()
+            .getPackageManager()
+            .hasSystemFeature(PackageManager.FEATURE_WATCH);
+        int uiModeType = getContext().getResources().getConfiguration().uiMode
+            & Configuration.UI_MODE_TYPE_MASK;
+        boolean isWatchUiMode = uiModeType == Configuration.UI_MODE_TYPE_WATCH;
+        JSObject ret = new JSObject();
+        ret.put("isWatch", hasWatchFeature || isWatchUiMode);
         call.resolve(ret);
     }
 

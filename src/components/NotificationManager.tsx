@@ -6,6 +6,7 @@ import {
   Send,
   Volume2,
   VolumeX,
+  Watch,
 } from 'lucide-react';
 import {
   DailyPrayerSchedule,
@@ -31,6 +32,7 @@ interface NotificationManagerProps {
   onSendTestNotification: () => void;
   onSendSummaryNotification: () => void;
   onOpenWidgetModal?: () => void;
+  onOpenWatchModal?: () => void;
 }
 
 const LEAD_OPTIONS: { value: 0 | 10 | 15 | 30; label: string }[] = [
@@ -51,6 +53,7 @@ export function NotificationManager({
   onSendTestNotification,
   onSendSummaryNotification,
   onOpenWidgetModal,
+  onOpenWatchModal,
 }: NotificationManagerProps) {
   const togglePrayer = (key: PrayerKey) => {
     onUpdateSettings({
@@ -107,6 +110,17 @@ export function NotificationManager({
               >
                 <LayoutGrid className="h-3.5 w-3.5 text-[#0F6E56] dark:text-[#34D399]" />
                 <span>Widget Ekle</span>
+              </button>
+            )}
+
+            {onOpenWatchModal && (
+              <button
+                type="button"
+                onClick={onOpenWatchModal}
+                className="inline-flex min-h-[42px] items-center gap-2 rounded-lg border border-[#DDD7C9] bg-[#FAF9F6] px-3.5 py-2 text-xs font-medium text-[#171A19] hover:border-[#0F6E56] dark:border-[#243242] dark:bg-[#0D141C] dark:text-[#EDF2F0] whitespace-nowrap"
+              >
+                <Watch className="h-3.5 w-3.5 text-[#0F6E56] dark:text-[#34D399]" />
+                <span>Akıllı Saat</span>
               </button>
             )}
 
@@ -260,6 +274,43 @@ export function NotificationManager({
                 <span
                   className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
                     settings.persistentSummary ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-[#E5E0D5] pt-3 dark:border-[#1E2936]">
+              <div className="flex items-center gap-2.5">
+                <Watch className="h-4 w-4 text-[#0F6E56] dark:text-[#34D399]" />
+                <div>
+                  <div className="text-sm font-medium">
+                    Akıllı Saat & Bileklik Vakit Özeti
+                  </div>
+                  <div className="text-xs text-[#666C68] dark:text-[#8E9BA4]">
+                    Tüm Android saatlere (Huawei, Amazfit, Xiaomi, Wear OS) vakit geçişini aynalar
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.watchAlertsEnabled ?? true}
+                onClick={() =>
+                  onUpdateSettings({
+                    ...settings,
+                    watchAlertsEnabled: !(settings.watchAlertsEnabled ?? true),
+                  })
+                }
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                  (settings.watchAlertsEnabled ?? true)
+                    ? 'bg-[#0F6E56] dark:bg-[#10B981]'
+                    : 'bg-[#D2CCC0] dark:bg-[#2B3949]'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    (settings.watchAlertsEnabled ?? true) ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>

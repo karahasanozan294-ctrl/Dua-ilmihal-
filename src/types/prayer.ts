@@ -59,6 +59,7 @@ export interface NotificationSettings {
   enabled: boolean;
   soundEnabled: boolean;
   persistentSummary: boolean;
+  watchAlertsEnabled?: boolean;
   leadMinutes: 0 | 10 | 15 | 30;
   prayers: Record<PrayerKey, boolean>;
 }

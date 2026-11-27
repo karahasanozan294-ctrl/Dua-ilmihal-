@@ -13,6 +13,7 @@ interface MihrabNativePlugin {
   syncPrayerSchedule(options: {
     persistentEnabled: boolean;
     alertsEnabled: boolean;
+    watchAlertsEnabled: boolean;
     soundEnabled: boolean;
     leadMinutes: number;
     locationName: string;
@@ -25,6 +26,11 @@ interface MihrabNativePlugin {
     title: string;
     body: string;
   }): Promise<{ sent: boolean }>;
+  sendWatchSummaryNotification(options: {
+    title: string;
+    body: string;
+  }): Promise<{ sent: boolean }>;
+  isWatchDevice(): Promise<{ isWatch: boolean }>;
   isPinWidgetSupported(): Promise<{ supported: boolean }>;
   requestPinWidget(options: {
     variant: 'wide' | 'compact';
@@ -148,6 +154,16 @@ export function isNativeMobile(): boolean {
   return isNativeAndroid() || isNativeIos();
 }
 
+export async function isAndroidWatch(): Promise<boolean> {
+  if (!isNativeAndroid()) return false;
+  try {
+    const res = await MihrabNativeNotifications.isWatchDevice();
+    return Boolean(res?.isWatch);
+  } catch {
+    return false;
+  }
+}
+
 export function getNotificationPermissionState(): NotificationPermissionState {
   if (isDesktopWindows()) {
     return 'granted';
@@ -221,6 +237,7 @@ export async function syncNativeAndroidPrayerBar(params: {
     const res = await MihrabNativeNotifications.syncPrayerSchedule({
       persistentEnabled: params.settings.persistentSummary,
       alertsEnabled: params.settings.enabled,
+      watchAlertsEnabled: params.settings.watchAlertsEnabled ?? true,
       soundEnabled: params.settings.soundEnabled,
       leadMinutes: params.settings.leadMinutes,
       locationName: params.locationName,
@@ -234,6 +251,26 @@ export async function syncNativeAndroidPrayerBar(params: {
   } catch {
     return null;
   }
+}
+
+export async function dispatchWatchSummaryNotification(
+  title: string,
+  body: string
+): Promise<boolean> {
+  if (isNativeAndroid()) {
+    try {
+      const res = await MihrabNativeNotifications.sendWatchSummaryNotification({
+        title,
+        body,
+      });
+      return Boolean(res?.sent);
+    } catch {
+      return false;
+    }
+  }
+  return dispatchBrowserNotification(title, body, {
+    tag: 'mihrab-watch-summary',
+  });
 }
 
 export function dispatchBrowserNotification(

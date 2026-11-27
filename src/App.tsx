@@ -24,6 +24,8 @@ import { PdfBookReader } from './components/PdfBookReader';
 import { RamuzElHadisReader } from './components/RamuzElHadisReader';
 import { RiyazusSalihinReader } from './components/RiyazusSalihinReader';
 import { SahihaynReader } from './components/SahihaynReader';
+import { WatchModeView } from './components/WatchModeView';
+import { WatchSupportModal } from './components/WatchSupportModal';
 import { WidgetModal } from './components/WidgetModal';
 import { Zikirmatik, ZikirmatikQuickCard } from './components/Zikirmatik';
 import { TURKEY_PROVINCES } from './data/cities';
@@ -40,6 +42,7 @@ import {
   dispatchBrowserNotification,
   getNotificationPermissionState,
   getUnifiedNotificationPermissionState,
+  isAndroidWatch,
   isNativeAndroid,
   isNativeIos,
   isNativeMobile,
@@ -61,6 +64,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
   soundEnabled: false,
   persistentSummary: true,
+  watchAlertsEnabled: true,
   leadMinutes: 0,
   prayers: {
     imsak: true,
@@ -176,6 +180,23 @@ export default function App() {
   >(undefined);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+  const [isWatchModalOpen, setIsWatchModalOpen] = useState(false);
+  const [isWatchDeviceNative, setIsWatchDeviceNative] = useState(false);
+  const [forceWatchMode, setForceWatchMode] = useState<boolean>(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('watch') === '1'
+  );
+  const [watchBypassed, setWatchBypassed] = useState<boolean>(() => {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        window.sessionStorage.getItem('mihrab_watch_bypass') === '1'
+      );
+    } catch {
+      return false;
+    }
+  });
 
   const isDesktopWidgetMode =
     typeof window !== 'undefined' &&
@@ -313,10 +334,17 @@ export default function App() {
     [location, now, methodId, madhabId]
   );
 
-  // Sync native Android notification permission on startup
+  // Sync native Android notification permission & check Wear OS watch hardware on startup
   useEffect(() => {
     let active = true;
     (async () => {
+      if (isNativeAndroid()) {
+        const watch = await isAndroidWatch();
+        if (active && watch) {
+          setIsWatchDeviceNative(true);
+        }
+      }
+
       const current = await getUnifiedNotificationPermissionState();
       if (!active) return;
       setPermissionState(current);
@@ -704,6 +732,55 @@ export default function App() {
     );
   }
 
+  const isTinyWatchViewport =
+    typeof window !== 'undefined' &&
+    window.innerWidth <= 340 &&
+    window.innerHeight <= 380;
+
+  const isWatchModeActive =
+    forceWatchMode ||
+    isWatchDeviceNative ||
+    (isTinyWatchViewport && !watchBypassed);
+
+  if (isWatchModeActive) {
+    return (
+      <>
+        <WatchModeView
+          location={location}
+          now={now}
+          schedule={schedule}
+          nextStatus={nextStatus}
+          zikirState={zikirState}
+          onZikirIncrement={handleZikirIncrement}
+          onZikirDecrement={handleZikirDecrement}
+          onZikirResetCurrent={handleZikirResetCurrent}
+          onZikirSelect={handleZikirSelect}
+          onOpenLocationModal={() => setIsLocationModalOpen(true)}
+          onExitWatchMode={
+            isWatchDeviceNative
+              ? undefined
+              : () => {
+                  setForceWatchMode(false);
+                  setWatchBypassed(true);
+                  try {
+                    window.sessionStorage.setItem('mihrab_watch_bypass', '1');
+                  } catch {
+                    // Ignore session storage errors
+                  }
+                }
+          }
+        />
+        <LocationModal
+          isOpen={isLocationModalOpen}
+          onClose={() => setIsLocationModalOpen(false)}
+          currentLocation={location}
+          recentLocations={recentLocations}
+          onSelectLocation={handleSelectLocation}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F5F0] text-[#171A19] dark:bg-[#0B1117] dark:text-[#EDF2F0]">
       <Header
@@ -874,6 +951,7 @@ export default function App() {
                   onOpenQibla={() => setActiveSection('kible')}
                   onOpenLocationModal={() => setIsLocationModalOpen(true)}
                   onOpenWidgetModal={() => setIsWidgetModalOpen(true)}
+                  onOpenWatchModal={() => setIsWatchModalOpen(true)}
                 />
                 <HijriSummaryCard
                   now={now}
@@ -1102,6 +1180,7 @@ export default function App() {
             onSendTestNotification={handleSendTestNotification}
             onSendSummaryNotification={handleSendSummaryNotification}
             onOpenWidgetModal={() => setIsWidgetModalOpen(true)}
+            onOpenWatchModal={() => setIsWatchModalOpen(true)}
           />
         )}
       </main>
@@ -1258,6 +1337,27 @@ export default function App() {
         nextStatus={nextStatus}
         preferences={widgetPrefs}
         onUpdatePreferences={setWidgetPrefs}
+      />
+
+      <WatchSupportModal
+        isOpen={isWatchModalOpen}
+        onClose={() => setIsWatchModalOpen(false)}
+        location={location}
+        now={now}
+        schedule={schedule}
+        nextStatus={nextStatus}
+        zikirState={zikirState}
+        onZikirIncrement={handleZikirIncrement}
+        onZikirDecrement={handleZikirDecrement}
+        onZikirResetCurrent={handleZikirResetCurrent}
+        onZikirSelect={handleZikirSelect}
+        notificationSettings={notificationSettings}
+        onUpdateNotifications={setNotificationSettings}
+        onOpenWatchFullscreen={() => {
+          setIsWatchModalOpen(false);
+          setWatchBypassed(false);
+          setForceWatchMode(true);
+        }}
       />
 
       <OfflineIndicator />
