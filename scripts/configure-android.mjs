@@ -1755,7 +1755,31 @@ public class WearPrayerCalculator {
         return CITIES[0];
     }
 
+    public static final String METHOD_DIYANET = "Turkey";
+    public static final String METHOD_FAZILET = "Fazilet";
+    public static final String MADHAB_SHAFI = "Shafi";
+    public static final String MADHAB_HANAFI = "Hanafi";
+
     public static DaySchedule calculateDay(WatchCity city, long dayTimestampMs) {
+        return calculateDay(city, dayTimestampMs, METHOD_DIYANET, MADHAB_SHAFI, null);
+    }
+
+    public static DaySchedule calculateDay(
+        WatchCity city,
+        long dayTimestampMs,
+        String methodId,
+        String madhabId,
+        int[] temkinOffsets
+    ) {
+        boolean isFazilet = METHOD_FAZILET.equals(methodId);
+        boolean isHanafi = MADHAB_HANAFI.equals(madhabId);
+        int[] tOff = new int[6];
+        if (temkinOffsets != null) {
+            for (int i = 0; i < Math.min(6, temkinOffsets.length); i++) {
+                tOff[i] = temkinOffsets[i];
+            }
+        }
+
         TimeZone tz = TimeZone.getTimeZone(city.tz);
         Calendar cal = Calendar.getInstance(tz);
         cal.setTimeInMillis(dayTimestampMs);
@@ -1766,27 +1790,50 @@ public class WearPrayerCalculator {
         double jd0 = julianDate(year, month, day);
         double noonUtHours = computeTransitUt(jd0 + 0.5, city.lon);
 
-        double fajrUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -18.0, false);
+        double fajrAngle = isFazilet ? -19.0 : -18.0;
+        double fajrUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, fajrAngle, false);
         double sunriseUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -0.8333, false);
         double dhuhrUt = computeTransitUt(jd0 + noonUtHours / 24.0, city.lon);
-        double asrUt = computeAsrUt(jd0, noonUtHours, city.lat, city.lon, 1.0);
+        double asrShafiUt = computeAsrUt(jd0, noonUtHours, city.lat, city.lon, 1.0);
+        double asrHanafiUt = computeAsrUt(jd0, noonUtHours, city.lat, city.lon, 2.0);
         double maghribUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -0.8333, true);
         double ishaUt = computeSunAngleTimeUt(jd0, noonUtHours, city.lat, city.lon, -17.0, true);
 
-        // Diyanet (Turkey) resmi temkin düzeltmeleri (dakika)
         long utcMidnightMs = utcMidnightMillis(year, month, day);
-        long fajrMs = roundMinuteMs(utcMidnightMs, fajrUt, 0);
-        long sunriseMs = roundMinuteMs(utcMidnightMs, sunriseUt, -7);
-        long dhuhrMs = roundMinuteMs(utcMidnightMs, dhuhrUt, 5);
-        long asrMs = roundMinuteMs(utcMidnightMs, asrUt, 4);
-        long maghribMs = roundMinuteMs(utcMidnightMs, maghribUt, 7);
-        long ishaMs = roundMinuteMs(utcMidnightMs, ishaUt, 0);
+        long fajrMs;
+        long sunriseMs;
+        long dhuhrMs;
+        long asrMs;
+        long maghribMs;
+        long ishaMs;
 
+        if (isFazilet) {
+            // Fazilet Takvimi (Temkinli): İmsak -19° / Yatsı -17° ve geleneksel temkin payları
+            fajrMs = floorMinuteMs(utcMidnightMs, fajrUt, -10) + (tOff[0] * 60_000L);
+            sunriseMs = floorMinuteMs(utcMidnightMs, sunriseUt, -8) + (tOff[1] * 60_000L);
+            dhuhrMs = roundMinuteMs(utcMidnightMs, dhuhrUt, 10) + (tOff[2] * 60_000L);
+            long asrSaniMs = roundMinuteMs(utcMidnightMs, asrHanafiUt, 5);
+            long asrBaseMs = isHanafi ? asrSaniMs : ceilMinuteMs(utcMidnightMs, asrShafiUt, 10);
+            asrMs = asrBaseMs + (tOff[3] * 60_000L);
+            maghribMs = roundMinuteMs(utcMidnightMs, maghribUt, 9) + (tOff[4] * 60_000L);
+            ishaMs = ceilMinuteMs(utcMidnightMs, ishaUt, 10) + (tOff[5] * 60_000L);
+        } else {
+            // Diyanet (Türkiye) resmi temkin düzeltmeleri
+            fajrMs = roundMinuteMs(utcMidnightMs, fajrUt, 0) + (tOff[0] * 60_000L);
+            sunriseMs = roundMinuteMs(utcMidnightMs, sunriseUt, -7) + (tOff[1] * 60_000L);
+            dhuhrMs = roundMinuteMs(utcMidnightMs, dhuhrUt, 5) + (tOff[2] * 60_000L);
+            double chosenAsrUt = isHanafi ? asrHanafiUt : asrShafiUt;
+            asrMs = roundMinuteMs(utcMidnightMs, chosenAsrUt, 4) + (tOff[3] * 60_000L);
+            maghribMs = roundMinuteMs(utcMidnightMs, maghribUt, 7) + (tOff[4] * 60_000L);
+            ishaMs = roundMinuteMs(utcMidnightMs, ishaUt, 0) + (tOff[5] * 60_000L);
+        }
+
+        String asrLabel = isHanafi ? "İkindi (A. Sânî)" : "İkindi";
         PrayerEntry[] entries = new PrayerEntry[] {
             new PrayerEntry("imsak", "İmsak", fajrMs, formatHHMM(fajrMs, tz)),
             new PrayerEntry("gunes", "Güneş", sunriseMs, formatHHMM(sunriseMs, tz)),
             new PrayerEntry("ogle", "Öğle", dhuhrMs, formatHHMM(dhuhrMs, tz)),
-            new PrayerEntry("ikindi", "İkindi", asrMs, formatHHMM(asrMs, tz)),
+            new PrayerEntry("ikindi", asrLabel, asrMs, formatHHMM(asrMs, tz)),
             new PrayerEntry("aksam", "Akşam", maghribMs, formatHHMM(maghribMs, tz)),
             new PrayerEntry("yatsi", "Yatsı", ishaMs, formatHHMM(ishaMs, tz))
         };
@@ -1810,10 +1857,20 @@ public class WearPrayerCalculator {
     }
 
     public static void syncToPrayerBarHelper(Context context, WatchCity city) {
+        syncToPrayerBarHelper(context, city, METHOD_DIYANET, MADHAB_SHAFI, null);
+    }
+
+    public static void syncToPrayerBarHelper(
+        Context context,
+        WatchCity city,
+        String methodId,
+        String madhabId,
+        int[] temkinOffsets
+    ) {
         try {
             long now = System.currentTimeMillis();
-            DaySchedule today = calculateDay(city, now);
-            DaySchedule tomorrow = calculateDay(city, now + 86_400_000L);
+            DaySchedule today = calculateDay(city, now, methodId, madhabId, temkinOffsets);
+            DaySchedule tomorrow = calculateDay(city, now + 86_400_000L, methodId, madhabId, temkinOffsets);
 
             JSONArray arr = new JSONArray();
             for (PrayerEntry e : today.prayers) {
@@ -1874,10 +1931,21 @@ public class WearPrayerCalculator {
         return c.getTimeInMillis();
     }
 
-    private static long roundMinuteMs(long utcMidnightMs, double utHours, int offsetMin) {
+    private static long exactRawMs(long utcMidnightMs, double utHours, int offsetMin) {
         if (Double.isNaN(utHours)) utHours = 12.0;
-        long rawMs = utcMidnightMs + Math.round(utHours * 3600.0 * 1000.0) + (offsetMin * 60_000L);
-        return Math.round(rawMs / 60_000.0) * 60_000L;
+        return utcMidnightMs + Math.round(utHours * 3600.0 * 1000.0) + (offsetMin * 60_000L);
+    }
+
+    private static long roundMinuteMs(long utcMidnightMs, double utHours, int offsetMin) {
+        return Math.round(exactRawMs(utcMidnightMs, utHours, offsetMin) / 60_000.0) * 60_000L;
+    }
+
+    private static long floorMinuteMs(long utcMidnightMs, double utHours, int offsetMin) {
+        return (long) Math.floor(exactRawMs(utcMidnightMs, utHours, offsetMin) / 60_000.0) * 60_000L;
+    }
+
+    private static long ceilMinuteMs(long utcMidnightMs, double utHours, int offsetMin) {
+        return (long) Math.ceil(exactRawMs(utcMidnightMs, utHours, offsetMin) / 60_000.0) * 60_000L;
     }
 
     private static double julianDate(int y, int m, int d) {
@@ -2059,6 +2127,9 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
     private static final String KEY_ZIKIR_IDX = "zikir_idx";
     private static final String KEY_ZIKIR_COUNTS = "zikir_counts";
     private static final String KEY_ZIKIR_ROUNDS = "zikir_rounds";
+    private static final String KEY_METHOD_ID = "method_id";
+    private static final String KEY_MADHAB_ID = "madhab_id";
+    private static final String KEY_TEMKIN_OFFSETS = "temkin_offsets";
     private static final int REQ_WATCH_PERMS = 901;
 
     private static final String[] ZIKIR_TITLES = {
@@ -2066,9 +2137,16 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         "Lâ ilâhe illallâh", "Estağfirullâh", "Salavat-ı Şerife"
     };
     private static final int[] ZIKIR_TARGETS = { 33, 33, 33, 99, 100, 100 };
+    private static final String[] TEMKIN_LABELS = {
+        "İmsak", "Güneş", "Öğle", "İkindi", "Akşam", "Yatsı"
+    };
 
-    private int activeTab = 0; // 0: Vakit, 1: Liste, 2: Kıble, 3: Zikir, 4: Şehir/GPS
+    private int activeTab = 0; // 0: Vakit, 1: Liste, 2: Kıble, 3: Zikir, 4: Ayar/Takvim/Şehir
     private WearPrayerCalculator.WatchCity currentCity;
+    private String methodId = WearPrayerCalculator.METHOD_DIYANET;
+    private String madhabId = WearPrayerCalculator.MADHAB_SHAFI;
+    private final int[] temkinOffsets = new int[6];
+
     private WearPrayerCalculator.DaySchedule todaySchedule;
     private WearPrayerCalculator.DaySchedule tomorrowSchedule;
     private WearPrayerCalculator.DaySchedule yesterdaySchedule;
@@ -2089,6 +2167,12 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
     private TextView zikirTargetText;
     private TextView compassLabelText;
     private TextView cityStatusText;
+    private Button diyanetBtn;
+    private Button faziletBtn;
+    private Button shafiBtn;
+    private Button hanafiBtn;
+    private final TextView[] temkinValueViews = new TextView[6];
+    private final TextView[] temkinTimeViews = new TextView[6];
     private final Button[] navButtons = new Button[4];
 
     private SensorManager sensorManager;
@@ -2109,7 +2193,7 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
 
         loadState();
         recomputeSchedules();
-        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity, methodId, madhabId, temkinOffsets);
         requestWatchPermissionsIfNeeded();
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -2151,6 +2235,18 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
             currentCity = WearPrayerCalculator.findById(sp.getString(KEY_CITY_ID, "tr-istanbul"));
         }
 
+        methodId = sp.getString(KEY_METHOD_ID, WearPrayerCalculator.METHOD_DIYANET);
+        madhabId = sp.getString(KEY_MADHAB_ID, WearPrayerCalculator.MADHAB_SHAFI);
+        String[] temkinRaw = sp.getString(KEY_TEMKIN_OFFSETS, "").split(",");
+        for (int i = 0; i < 6; i++) {
+            try {
+                if (i < temkinRaw.length && !temkinRaw[i].isEmpty()) {
+                    temkinOffsets[i] = Math.max(-30, Math.min(30, Integer.parseInt(temkinRaw[i])));
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
         zikirIdx = Math.max(0, Math.min(ZIKIR_TITLES.length - 1, sp.getInt(KEY_ZIKIR_IDX, 0)));
         String[] countsRaw = sp.getString(KEY_ZIKIR_COUNTS, "").split(",");
         String[] roundsRaw = sp.getString(KEY_ZIKIR_ROUNDS, "").split(",");
@@ -2165,6 +2261,27 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
             } catch (NumberFormatException ignored) {
             }
         }
+    }
+
+    private void saveCalendarPrefsAndRefresh() {
+        StringBuilder tb = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            if (i > 0) tb.append(",");
+            tb.append(temkinOffsets[i]);
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_METHOD_ID, methodId)
+            .putString(KEY_MADHAB_ID, madhabId)
+            .putString(KEY_TEMKIN_OFFSETS, tb.toString())
+            .apply();
+
+        recomputeSchedules();
+        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity, methodId, madhabId, temkinOffsets);
+        refreshPrayerListUi();
+        refreshSettingsUi();
+        if (dialView != null) dialView.invalidate();
+        if (compassView != null) compassView.invalidate();
     }
 
     private void saveZikirState() {
@@ -2201,17 +2318,18 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         ed.apply();
 
         recomputeSchedules();
-        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+        WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity, methodId, madhabId, temkinOffsets);
         refreshPrayerListUi();
+        refreshSettingsUi();
         if (dialView != null) dialView.invalidate();
         if (compassView != null) compassView.invalidate();
     }
 
     private void recomputeSchedules() {
         long now = System.currentTimeMillis();
-        todaySchedule = WearPrayerCalculator.calculateDay(currentCity, now);
-        tomorrowSchedule = WearPrayerCalculator.calculateDay(currentCity, now + 86_400_000L);
-        yesterdaySchedule = WearPrayerCalculator.calculateDay(currentCity, now - 86_400_000L);
+        todaySchedule = WearPrayerCalculator.calculateDay(currentCity, now, methodId, madhabId, temkinOffsets);
+        tomorrowSchedule = WearPrayerCalculator.calculateDay(currentCity, now + 86_400_000L, methodId, madhabId, temkinOffsets);
+        yesterdaySchedule = WearPrayerCalculator.calculateDay(currentCity, now - 86_400_000L, methodId, madhabId, temkinOffsets);
     }
 
     private void buildUi() {
@@ -2399,23 +2517,164 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        col.setPadding(dp(26), dp(28), dp(26), dp(54));
+        col.setPadding(dp(24), dp(26), dp(24), dp(56));
 
         TextView head = new TextView(this);
-        head.setText("Şehir / Konum Seç");
+        head.setText("Takvim, Temkin & Konum");
         head.setTextColor(0xFFEDF2F0);
-        head.setTextSize(13f);
+        head.setTextSize(12f);
         head.setTypeface(Typeface.DEFAULT_BOLD);
         head.setGravity(Gravity.CENTER);
         col.addView(head);
 
         cityStatusText = new TextView(this);
-        cityStatusText.setText("Aktif: " + currentCity.name);
         cityStatusText.setTextColor(0xFF34D399);
         cityStatusText.setTextSize(10f);
         cityStatusText.setGravity(Gravity.CENTER);
         cityStatusText.setPadding(0, dp(2), 0, dp(8));
         col.addView(cityStatusText);
+
+        // Takvim Yöntemi: Diyanet vs Fazilet Takvimi (Temkinli)
+        TextView methodLbl = new TextView(this);
+        methodLbl.setText("Hesaplama Takvimi");
+        methodLbl.setTextColor(0xFF9DB0A8);
+        methodLbl.setTextSize(10f);
+        methodLbl.setPadding(0, dp(2), 0, dp(4));
+        col.addView(methodLbl);
+
+        LinearLayout methodRow = new LinearLayout(this);
+        methodRow.setOrientation(LinearLayout.HORIZONTAL);
+        diyanetBtn = makeToggleBtn("Diyanet", v -> {
+            methodId = WearPrayerCalculator.METHOD_DIYANET;
+            vibrateMs(14);
+            saveCalendarPrefsAndRefresh();
+        });
+        faziletBtn = makeToggleBtn("Fazilet (Temkin)", v -> {
+            methodId = WearPrayerCalculator.METHOD_FAZILET;
+            vibrateMs(14);
+            saveCalendarPrefsAndRefresh();
+        });
+        LinearLayout.LayoutParams mLp1 = new LinearLayout.LayoutParams(0, dp(32), 1f);
+        mLp1.setMargins(0, 0, dp(4), 0);
+        methodRow.addView(diyanetBtn, mLp1);
+        methodRow.addView(faziletBtn, new LinearLayout.LayoutParams(0, dp(32), 1f));
+        LinearLayout.LayoutParams mRowLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        mRowLp.setMargins(0, 0, 0, dp(8));
+        col.addView(methodRow, mRowLp);
+
+        // İkindi Mezhebi: Standart vs Hanefi (Asr-ı Sânî)
+        TextView madhabLbl = new TextView(this);
+        madhabLbl.setText("İkindi Mezhebi");
+        madhabLbl.setTextColor(0xFF9DB0A8);
+        madhabLbl.setTextSize(10f);
+        madhabLbl.setPadding(0, 0, 0, dp(4));
+        col.addView(madhabLbl);
+
+        LinearLayout madhabRow = new LinearLayout(this);
+        madhabRow.setOrientation(LinearLayout.HORIZONTAL);
+        shafiBtn = makeToggleBtn("Standart", v -> {
+            madhabId = WearPrayerCalculator.MADHAB_SHAFI;
+            vibrateMs(14);
+            saveCalendarPrefsAndRefresh();
+        });
+        hanafiBtn = makeToggleBtn("Hanefi İkindi", v -> {
+            madhabId = WearPrayerCalculator.MADHAB_HANAFI;
+            vibrateMs(14);
+            saveCalendarPrefsAndRefresh();
+        });
+        LinearLayout.LayoutParams hLp1 = new LinearLayout.LayoutParams(0, dp(30), 1f);
+        hLp1.setMargins(0, 0, dp(4), 0);
+        madhabRow.addView(shafiBtn, hLp1);
+        madhabRow.addView(hanafiBtn, new LinearLayout.LayoutParams(0, dp(30), 1f));
+        LinearLayout.LayoutParams hRowLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        hRowLp.setMargins(0, 0, 0, dp(10));
+        col.addView(madhabRow, hRowLp);
+
+        // Özel Temkin Ayarı (± Dakika)
+        TextView temkinLbl = new TextView(this);
+        temkinLbl.setText("Temkin Ayarı (± Dakika)");
+        temkinLbl.setTextColor(0xFF9DB0A8);
+        temkinLbl.setTextSize(10f);
+        temkinLbl.setPadding(0, 0, 0, dp(4));
+        col.addView(temkinLbl);
+
+        for (int i = 0; i < 6; i++) {
+            final int idx = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(8), dp(4), dp(6), dp(4));
+            GradientDrawable rBg = new GradientDrawable();
+            rBg.setCornerRadius(dp(10));
+            rBg.setColor(0xFF0A120F);
+            rBg.setStroke(dp(1), 0xFF1A2A24);
+            row.setBackground(rBg);
+
+            LinearLayout leftCol = new LinearLayout(this);
+            leftCol.setOrientation(LinearLayout.VERTICAL);
+            TextView pName = new TextView(this);
+            pName.setText(TEMKIN_LABELS[i]);
+            pName.setTextColor(0xFFEDF2F0);
+            pName.setTextSize(11f);
+            pName.setTypeface(Typeface.DEFAULT_BOLD);
+            TextView pTime = new TextView(this);
+            pTime.setTextColor(0xFF8EA39B);
+            pTime.setTextSize(9.5f);
+            pTime.setTypeface(Typeface.MONOSPACE);
+            temkinTimeViews[i] = pTime;
+            leftCol.addView(pName);
+            leftCol.addView(pTime);
+            row.addView(leftCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button minusBtn = makeMiniBtn("−", v -> {
+                temkinOffsets[idx] = Math.max(-30, temkinOffsets[idx] - 1);
+                vibrateMs(12);
+                saveCalendarPrefsAndRefresh();
+            });
+            TextView valView = new TextView(this);
+            valView.setGravity(Gravity.CENTER);
+            valView.setTextSize(10.5f);
+            valView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            temkinValueViews[i] = valView;
+            Button plusBtn = makeMiniBtn("+", v -> {
+                temkinOffsets[idx] = Math.min(30, temkinOffsets[idx] + 1);
+                vibrateMs(12);
+                saveCalendarPrefsAndRefresh();
+            });
+
+            row.addView(minusBtn, new LinearLayout.LayoutParams(dp(26), dp(26)));
+            row.addView(valView, new LinearLayout.LayoutParams(dp(38), ViewGroup.LayoutParams.WRAP_CONTENT));
+            row.addView(plusBtn, new LinearLayout.LayoutParams(dp(26), dp(26)));
+
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            rLp.setMargins(0, 0, 0, dp(4));
+            col.addView(row, rLp);
+        }
+
+        Button resetTemkinBtn = makeMiniBtn("Temkini Sıfırla (0 dk)", v -> {
+            for (int i = 0; i < 6; i++) temkinOffsets[i] = 0;
+            vibrateMs(18);
+            saveCalendarPrefsAndRefresh();
+        });
+        LinearLayout.LayoutParams rstLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(28)
+        );
+        rstLp.setMargins(0, dp(2), 0, dp(10));
+        col.addView(resetTemkinBtn, rstLp);
+
+        // Şehir / Konum Seçimi
+        TextView locLbl = new TextView(this);
+        locLbl.setText("Şehir / Konum");
+        locLbl.setTextColor(0xFF9DB0A8);
+        locLbl.setTextSize(10f);
+        locLbl.setPadding(0, 0, 0, dp(4));
+        col.addView(locLbl);
 
         Button gpsBtn = new Button(this);
         gpsBtn.setAllCaps(false);
@@ -2446,7 +2705,6 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
             cb.setBackground(bg);
             cb.setOnClickListener(v -> {
                 saveCity(c);
-                cityStatusText.setText("Aktif: " + c.name);
                 vibrateMs(18);
                 switchTab(0);
             });
@@ -2458,7 +2716,63 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         }
 
         scroll.addView(col);
+        refreshSettingsUi();
         return scroll;
+    }
+
+    private Button makeToggleBtn(String text, View.OnClickListener listener) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(text);
+        b.setTextSize(10.5f);
+        b.setPadding(dp(4), 0, dp(4), 0);
+        b.setMinHeight(dp(28));
+        b.setMinimumHeight(dp(28));
+        b.setSingleLine(true);
+        b.setEllipsize(TextUtils.TruncateAt.END);
+        b.setOnClickListener(listener);
+        return b;
+    }
+
+    private void styleToggleBtn(Button b, boolean active) {
+        if (b == null) return;
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(10));
+        if (active) {
+            bg.setColor(0xFF10B981);
+            b.setTextColor(0xFF04140E);
+            b.setTypeface(Typeface.DEFAULT_BOLD);
+        } else {
+            bg.setColor(0xFF0E1714);
+            bg.setStroke(dp(1), 0xFF1E322B);
+            b.setTextColor(0xFFA7BDB4);
+            b.setTypeface(Typeface.DEFAULT);
+        }
+        b.setBackground(bg);
+    }
+
+    private void refreshSettingsUi() {
+        if (cityStatusText != null) {
+            String mLabel = WearPrayerCalculator.METHOD_FAZILET.equals(methodId) ? "Fazilet" : "Diyanet";
+            cityStatusText.setText(currentCity.name + " · " + mLabel);
+        }
+        boolean isFazilet = WearPrayerCalculator.METHOD_FAZILET.equals(methodId);
+        boolean isHanafi = WearPrayerCalculator.MADHAB_HANAFI.equals(madhabId);
+        styleToggleBtn(diyanetBtn, !isFazilet);
+        styleToggleBtn(faziletBtn, isFazilet);
+        styleToggleBtn(shafiBtn, !isHanafi);
+        styleToggleBtn(hanafiBtn, isHanafi);
+
+        for (int i = 0; i < 6; i++) {
+            if (temkinValueViews[i] != null) {
+                int v = temkinOffsets[i];
+                temkinValueViews[i].setText(v > 0 ? ("+" + v + "d") : (v + "d"));
+                temkinValueViews[i].setTextColor(v != 0 ? 0xFF34D399 : 0xFF9DB0A8);
+            }
+            if (temkinTimeViews[i] != null && todaySchedule != null && i < todaySchedule.prayers.length) {
+                temkinTimeViews[i].setText(todaySchedule.prayers[i].formattedTime);
+            }
+        }
     }
 
     @Override
@@ -2472,7 +2786,7 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
             if (locGranted && activeTab == 4) {
                 detectWatchGps();
             }
-            WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity);
+            WearPrayerCalculator.syncToPrayerBarHelper(this, currentCity, methodId, madhabId, temkinOffsets);
         }
     }
 
@@ -2555,7 +2869,8 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         prayerListContainer.removeAllViews();
 
         TextView title = new TextView(this);
-        title.setText(currentCity.name + " · Bugün");
+        String calName = WearPrayerCalculator.METHOD_FAZILET.equals(methodId) ? "Fazilet" : "Diyanet";
+        title.setText(currentCity.name + " · " + calName + " ⚙");
         title.setTextColor(0xFF9DB0A8);
         title.setTextSize(11f);
         title.setGravity(Gravity.CENTER);
@@ -2615,6 +2930,14 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
         extra.setGravity(Gravity.CENTER);
         extra.setPadding(0, dp(4), 0, dp(6));
         prayerListContainer.addView(extra);
+
+        Button cfgBtn = makeToggleBtn("Takvim, Temkin & Konum", v -> switchTab(4));
+        styleToggleBtn(cfgBtn, false);
+        LinearLayout.LayoutParams cfgLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(30)
+        );
+        cfgLp.setMargins(0, dp(2), 0, dp(6));
+        prayerListContainer.addView(cfgBtn, cfgLp);
     }
 
     private void switchTab(int tab) {
@@ -2891,7 +3214,8 @@ public class WearWatchActivity extends Activity implements SensorEventListener {
                 System.currentTimeMillis(),
                 TimeZone.getTimeZone(currentCity.tz)
             );
-            canvas.drawText(currentCity.name + " · " + clock + " ▾", cx, cy - r * 0.44f, cityPaint);
+            String mTag = WearPrayerCalculator.METHOD_FAZILET.equals(methodId) ? "Fazilet · " : "";
+            canvas.drawText(currentCity.name + " · " + mTag + clock + " ⚙", cx, cy - r * 0.44f, cityPaint);
 
             subPaint.setColor(0xFF34D399);
             canvas.drawText("Sıradaki · " + info.next.formattedTime, cx, cy - r * 0.20f, subPaint);

@@ -36,6 +36,7 @@ import {
   LocationInfo,
   MadhabId,
   NotificationSettings,
+  TemkinOffsets,
 } from './types/prayer';
 import { ZikirItem, ZikirState } from './types/zikir';
 import {
@@ -81,6 +82,15 @@ const DEFAULT_WIDGET_PREFS: WidgetPreferences = {
   theme: 'light',
   showHijri: true,
   floatingEnabled: false,
+};
+
+const DEFAULT_TEMKIN_OFFSETS: TemkinOffsets = {
+  imsak: 0,
+  gunes: 0,
+  ogle: 0,
+  ikindi: 0,
+  aksam: 0,
+  yatsi: 0,
 };
 
 function readStorage<T>(key: string, fallback: T): T {
@@ -214,6 +224,9 @@ export default function App() {
   const [madhabId, setMadhabId] = useState<MadhabId>(() =>
     readStorage<MadhabId>('mihrab_madhab', 'Shafi')
   );
+  const [temkinOffsets, setTemkinOffsets] = useState<TemkinOffsets>(() =>
+    readStorage<TemkinOffsets>('mihrab_temkin', DEFAULT_TEMKIN_OFFSETS)
+  );
   const [isDark, setIsDark] = useState<boolean>(() =>
     readStorage<boolean>('mihrab_dark', false)
   );
@@ -265,6 +278,7 @@ export default function App() {
       window.localStorage.setItem('mihrab_location', JSON.stringify(location));
       window.localStorage.setItem('mihrab_method', JSON.stringify(methodId));
       window.localStorage.setItem('mihrab_madhab', JSON.stringify(madhabId));
+      window.localStorage.setItem('mihrab_temkin', JSON.stringify(temkinOffsets));
       window.localStorage.setItem(
         'mihrab_notifications',
         JSON.stringify(notificationSettings)
@@ -285,6 +299,7 @@ export default function App() {
     location,
     methodId,
     madhabId,
+    temkinOffsets,
     notificationSettings,
     recentLocations,
     zikirState,
@@ -299,6 +314,7 @@ export default function App() {
         if (e.key === 'mihrab_location') setLocation(JSON.parse(e.newValue));
         if (e.key === 'mihrab_method') setMethodId(JSON.parse(e.newValue));
         if (e.key === 'mihrab_madhab') setMadhabId(JSON.parse(e.newValue));
+        if (e.key === 'mihrab_temkin') setTemkinOffsets(JSON.parse(e.newValue));
         if (e.key === 'mihrab_dark') setIsDark(JSON.parse(e.newValue));
         if (e.key === 'mihrab_widget_prefs') setWidgetPrefs(JSON.parse(e.newValue));
       } catch {
@@ -320,18 +336,25 @@ export default function App() {
   const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
 
   const schedule = useMemo(
-    () => calculateDailySchedule(location, now, methodId, madhabId),
-    [location, todayKey, methodId, madhabId]
+    () =>
+      calculateDailySchedule(location, now, methodId, madhabId, temkinOffsets),
+    [location, todayKey, methodId, madhabId, temkinOffsets]
   );
 
   const tomorrowSchedule = useMemo(() => {
     const tomorrow = new Date(now.getTime() + 86_400_000);
-    return calculateDailySchedule(location, tomorrow, methodId, madhabId);
-  }, [location, todayKey, methodId, madhabId]);
+    return calculateDailySchedule(
+      location,
+      tomorrow,
+      methodId,
+      madhabId,
+      temkinOffsets
+    );
+  }, [location, todayKey, methodId, madhabId, temkinOffsets]);
 
   const nextStatus = useMemo(
-    () => getNextPrayerStatus(location, now, methodId, madhabId),
-    [location, now, methodId, madhabId]
+    () => getNextPrayerStatus(location, now, methodId, madhabId, temkinOffsets),
+    [location, now, methodId, madhabId, temkinOffsets]
   );
 
   // Sync native Android notification permission & check Wear OS watch hardware on startup
@@ -755,6 +778,12 @@ export default function App() {
           onZikirDecrement={handleZikirDecrement}
           onZikirResetCurrent={handleZikirResetCurrent}
           onZikirSelect={handleZikirSelect}
+          methodId={methodId}
+          onChangeMethod={setMethodId}
+          madhabId={madhabId}
+          onChangeMadhab={setMadhabId}
+          temkinOffsets={temkinOffsets}
+          onChangeTemkinOffsets={setTemkinOffsets}
           onOpenLocationModal={() => setIsLocationModalOpen(true)}
           onExitWatchMode={
             isWatchDeviceNative
@@ -1351,6 +1380,12 @@ export default function App() {
         onZikirDecrement={handleZikirDecrement}
         onZikirResetCurrent={handleZikirResetCurrent}
         onZikirSelect={handleZikirSelect}
+        methodId={methodId}
+        onChangeMethod={setMethodId}
+        madhabId={madhabId}
+        onChangeMadhab={setMadhabId}
+        temkinOffsets={temkinOffsets}
+        onChangeTemkinOffsets={setTemkinOffsets}
         notificationSettings={notificationSettings}
         onUpdateNotifications={setNotificationSettings}
         onOpenWatchFullscreen={() => {

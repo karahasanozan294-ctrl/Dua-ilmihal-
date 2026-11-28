@@ -55,6 +55,8 @@ export interface DailyPrayerSchedule {
   distanceToMeccaKm: number;
 }
 
+export type TemkinOffsets = Record<PrayerKey, number>;
+
 export interface NotificationSettings {
   enabled: boolean;
   soundEnabled: boolean;

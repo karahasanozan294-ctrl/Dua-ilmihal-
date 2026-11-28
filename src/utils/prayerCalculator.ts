@@ -15,6 +15,7 @@ import {
   MadhabId,
   PrayerKey,
   PrayerTimeEntry,
+  TemkinOffsets,
 } from '../types/prayer';
 
 export const CALCULATION_METHODS: {
@@ -242,7 +243,8 @@ export function calculateDailySchedule(
   location: LocationInfo,
   targetDate: Date,
   methodId: CalculationMethodId,
-  madhabId: MadhabId
+  madhabId: MadhabId,
+  temkinOffsets?: Partial<TemkinOffsets>
 ): DailyPrayerSchedule {
   const coords = new Coordinates(location.latitude, location.longitude);
   const params = getCalculationParams(methodId, madhabId);
@@ -297,6 +299,19 @@ export function calculateDailySchedule(
     maghribDate = roundMin(prayerTimes.maghrib, 9);
     ishaDate = ceilMin(prayerTimes.isha, 10);
   }
+
+  const applyTemkin = (key: PrayerKey, baseDate: Date) => {
+    const mins = temkinOffsets?.[key] ?? 0;
+    return mins ? new Date(baseDate.getTime() + mins * 60000) : baseDate;
+  };
+
+  fajrDate = applyTemkin('imsak', fajrDate);
+  sunriseDate = applyTemkin('gunes', sunriseDate);
+  dhuhrDate = applyTemkin('ogle', dhuhrDate);
+  asrDate = applyTemkin('ikindi', asrDate);
+  maghribDate = applyTemkin('aksam', maghribDate);
+  ishaDate = applyTemkin('yatsi', ishaDate);
+  sabahDate = floorMin(fajrDate, 20);
 
   const entries: PrayerTimeEntry[] = [
     {
@@ -385,13 +400,15 @@ export function getNextPrayerStatus(
   location: LocationInfo,
   now: Date,
   methodId: CalculationMethodId,
-  madhabId: MadhabId
+  madhabId: MadhabId,
+  temkinOffsets?: Partial<TemkinOffsets>
 ): NextPrayerStatus {
   const todaySchedule = calculateDailySchedule(
     location,
     now,
     methodId,
-    madhabId
+    madhabId,
+    temkinOffsets
   );
   const prayers = todaySchedule.prayers;
   const nowMs = now.getTime();
@@ -410,7 +427,8 @@ export function getNextPrayerStatus(
       location,
       tomorrow,
       methodId,
-      madhabId
+      madhabId,
+      temkinOffsets
     );
     currentPrayer = prayers[prayers.length - 1];
     nextPrayer = tomorrowSchedule.prayers[0];
@@ -423,7 +441,8 @@ export function getNextPrayerStatus(
       location,
       yesterday,
       methodId,
-      madhabId
+      madhabId,
+      temkinOffsets
     );
     currentPrayer = yesterdaySchedule.prayers[yesterdaySchedule.prayers.length - 1];
     nextPrayer = prayers[0];

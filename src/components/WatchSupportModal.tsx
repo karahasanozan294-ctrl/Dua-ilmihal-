@@ -8,7 +8,14 @@ import {
   Watch,
   X,
 } from 'lucide-react';
-import { DailyPrayerSchedule, LocationInfo, NotificationSettings } from '../types/prayer';
+import {
+  CalculationMethodId,
+  DailyPrayerSchedule,
+  LocationInfo,
+  MadhabId,
+  NotificationSettings,
+  TemkinOffsets,
+} from '../types/prayer';
 import { ZikirState } from '../types/zikir';
 import {
   dispatchWatchSummaryNotification,
@@ -29,6 +36,12 @@ interface WatchSupportModalProps {
   onZikirDecrement: () => void;
   onZikirResetCurrent: () => void;
   onZikirSelect: (id: string) => void;
+  methodId: CalculationMethodId;
+  onChangeMethod: (method: CalculationMethodId) => void;
+  madhabId: MadhabId;
+  onChangeMadhab: (madhab: MadhabId) => void;
+  temkinOffsets: TemkinOffsets;
+  onChangeTemkinOffsets: (next: TemkinOffsets) => void;
   notificationSettings: NotificationSettings;
   onUpdateNotifications: (next: NotificationSettings) => void;
   onOpenWatchFullscreen: () => void;
@@ -46,6 +59,12 @@ export function WatchSupportModal({
   onZikirDecrement,
   onZikirResetCurrent,
   onZikirSelect,
+  methodId,
+  onChangeMethod,
+  madhabId,
+  onChangeMadhab,
+  temkinOffsets,
+  onChangeTemkinOffsets,
   notificationSettings,
   onUpdateNotifications,
   onOpenWatchFullscreen,
@@ -131,12 +150,18 @@ export function WatchSupportModal({
               onZikirDecrement={onZikirDecrement}
               onZikirResetCurrent={onZikirResetCurrent}
               onZikirSelect={onZikirSelect}
+              methodId={methodId}
+              onChangeMethod={onChangeMethod}
+              madhabId={madhabId}
+              onChangeMadhab={onChangeMadhab}
+              temkinOffsets={temkinOffsets}
+              onChangeTemkinOffsets={onChangeTemkinOffsets}
               embedded
               shape={watchShape}
             />
             <div className="h-3.5 w-20 rounded-b-lg bg-[#24312C]" />
             <p className="mt-2 text-[11px] text-[#666C68] dark:text-[#8E9BA4]">
-              Canlı saat ekranı · Alt simgelerden Kıble ve Zikir’i test edin
+              Canlı saat ekranı · Alt simgelerden Kıble, Zikir ve Fazilet / Temkin ayarlarını test edin
             </p>
           </div>
 
@@ -281,7 +306,7 @@ export function WatchSupportModal({
                   Telefonunuza <strong>Bugjaeger</strong> veya <strong>Wear Installer 2</strong> kurup saate bağlanın ve güncel <strong>Mihrab-Android.apk</strong> dosyasını gönderin.
                 </li>
                 <li>
-                  Saat kadranında şehir adına dokunarak 81 il veya <strong>GPS ile Konum Bul</strong> özelliğini seçebilirsiniz.
+                  Saat kadranında saat/ayar ikonuna veya şehir adına dokunarak 81 il, <strong>GPS ile Konum Bul</strong>, <strong>Fazilet Takvimi</strong>, <strong>Hanefi İkindi</strong> ve vakit başı <strong>± dakika Temkin</strong> ayarlarını yapabilirsiniz.
                 </li>
               </ol>
             </div>
